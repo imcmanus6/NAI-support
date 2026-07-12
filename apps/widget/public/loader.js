@@ -73,7 +73,8 @@
   // data-position: "bottom-right" (default), "bottom-left", or a bottom offset in px
   // (e.g. "96" to stack above another bubble like Briefly's Blink).
   function css(el, s) { for (var k in s) el.style[k] = s[k] }
-  var open = false, mounted = false
+  var open = false, mounted = false, iframe = null
+  var recStop = null, recEvents = [], recBar = null, recStart = 0
   var showLauncher = script.getAttribute('data-launcher') !== 'none'
   var position = script.getAttribute('data-position') || 'bottom-right'
   var side = position === 'bottom-left' ? { left: '20px' } : { right: '20px' }
@@ -92,12 +93,55 @@
     if (mounted) return
     mounted = true
     getToken().catch(function () { return null }).then(function (token) {
-      var iframe = document.createElement('iframe')
+      iframe = document.createElement('iframe')
       iframe.title = 'Support'
       css(iframe, { width: '100%', height: '100%', border: 'none' })
       iframe.src = origin + (token ? '#token=' + encodeURIComponent(token) : '')
       panel.appendChild(iframe)
     })
+  }
+
+  // ── Session recording (rrweb) — captures the HOST page so a ticket is reproducible ──
+  function loadRrweb(cb) {
+    if (window.rrweb && window.rrweb.record) return cb()
+    var s = document.createElement('script')
+    s.src = 'https://cdn.jsdelivr.net/npm/rrweb@2.0.0-alpha.4/dist/rrweb.min.js'
+    s.onload = function () { cb() }
+    s.onerror = function () { cb(new Error('rrweb failed to load')) }
+    document.head.appendChild(s)
+  }
+  function startRecording() {
+    closeWidget()   // get out of the way so the user can reproduce the issue
+    loadRrweb(function (err) {
+      if (err || !window.rrweb) { openWidget(); return }
+      recEvents = []; recStart = Date.now()
+      recStop = window.rrweb.record({ emit: function (e) { recEvents.push(e) } })
+      showRecBar()
+    })
+  }
+  function finishRecording() {
+    if (recStop) { try { recStop() } catch (e) {} recStop = null }
+    if (recBar) { recBar.remove(); recBar = null }
+    var payload = { events: recEvents, meta: { url: location.href, duration_ms: Date.now() - recStart, events: recEvents.length } }
+    openWidget()
+    if (iframe && iframe.contentWindow) iframe.contentWindow.postMessage({ type: 'nai:record-events', data: payload }, '*')
+  }
+  function showRecBar() {
+    recBar = document.createElement('div')
+    css(recBar, {
+      position: 'fixed', top: '16px', left: '50%', transform: 'translateX(-50%)', zIndex: 2147483002,
+      background: '#171a21', color: '#fff', border: '1px solid ' + accent, borderRadius: '999px',
+      padding: '8px 14px', display: 'flex', alignItems: 'center', gap: '10px',
+      font: '13px ui-monospace, monospace', boxShadow: '0 8px 24px rgba(0,0,0,.3)'
+    })
+    var dot = document.createElement('span')
+    css(dot, { width: '9px', height: '9px', borderRadius: '50%', background: '#ef4444' })
+    var label = document.createElement('span'); label.textContent = 'Recording — reproduce the issue'
+    var stop = document.createElement('button'); stop.textContent = 'Stop & attach'
+    css(stop, { background: accent, color: '#fff', border: 'none', borderRadius: '999px', padding: '5px 12px', cursor: 'pointer', font: 'inherit' })
+    stop.addEventListener('click', finishRecording)
+    recBar.appendChild(dot); recBar.appendChild(label); recBar.appendChild(stop)
+    document.body.appendChild(recBar)
   }
   function openWidget() { open = true; panel.style.display = 'block'; if (btn) btn.textContent = '×'; mount() }
   function closeWidget() { open = false; panel.style.display = 'none'; if (btn) btn.textContent = '💬' }
@@ -134,8 +178,11 @@
   // ── Answer the widget's request for the host recording ──────────────────────
   window.addEventListener('message', function (e) {
     var d = e.data
-    if (d && d.type === 'support:get-diagnostics' && e.source) {
+    if (!d) return
+    if (d.type === 'support:get-diagnostics' && e.source) {
       e.source.postMessage({ type: 'support:diagnostics', id: d.id, data: diagnostics() }, '*')
+    } else if (d.type === 'nai:record-start') {
+      startRecording()
     }
   })
 })();

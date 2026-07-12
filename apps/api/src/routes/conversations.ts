@@ -6,8 +6,10 @@
 import type { FastifyInstance } from 'fastify'
 import { and, eq, asc, desc } from 'drizzle-orm'
 import { z } from 'zod'
+import { randomBytes } from 'node:crypto'
 import { db } from '../db/client.js'
-import { conversations, messages, clientSpaces, tickets, clients } from '../db/schema.js'
+import { conversations, messages, clientSpaces, tickets, clients, recordings } from '../db/schema.js'
+import { config } from '../lib/config.js'
 import { resolveCustomer } from '../lib/customerAuth.js'
 import { runAgentTurn, type AgentContext } from '../services/supportAgent.js'
 import { getTicketSink, TicketSinkError } from '../services/ticketSink.js'
@@ -42,6 +44,12 @@ const ConfirmTicketSchema = z.object({
   description: z.string().max(10_000).default(''),
   context: ClientContextSchema,   // e.g. an attachment added at confirm time
   diagnostics: DiagnosticsSchema, // host-page console/network/errors captured by the host
+  recording_id: z.string().uuid().optional(), // an rrweb reproduction to attach
+})
+
+const RecordingSchema = z.object({
+  events: z.array(z.any()).min(1).max(50_000),
+  meta: z.record(z.any()).optional(),
 })
 
 const ReplySchema = z.object({ body: z.string().min(1).max(4000) })
@@ -72,6 +80,29 @@ export async function conversationsRoutes(fastify: FastifyInstance) {
     const [client] = await db.select({ help_url: clients.help_url }).from(clients).where(eq(clients.id, identity.clientId)).limit(1)
     if (!client) { reply.status(404); return { error: 'Client not found' } }
     return { data: { help_url: client.help_url ?? null } }
+  })
+
+  // Store an rrweb session recording (a reproduction). Larger body limit for the event stream.
+  fastify.post('/recordings', { bodyLimit: 20 * 1024 * 1024 }, async (request, reply) => {
+    const identity = await resolveCustomer(request)
+    const parsed = RecordingSchema.safeParse(request.body)
+    if (!parsed.success) { reply.status(400); return { error: 'Invalid recording', code: 'VALIDATION_ERROR' } }
+
+    const [conv] = await db.select({ id: conversations.id }).from(conversations).where(and(
+      eq(conversations.client_id, identity.clientId),
+      eq(conversations.external_customer_id, identity.customerId),
+      eq(conversations.status, 'open'),
+    )).limit(1)
+
+    const [row] = await db.insert(recordings).values({
+      client_id: identity.clientId,
+      conversation_id: conv?.id ?? null,
+      events_json: parsed.data.events,
+      meta_json: parsed.data.meta ?? {},
+      view_token: randomBytes(18).toString('base64url'),
+    }).returning({ id: recordings.id })
+    reply.status(201)
+    return { data: { id: row.id } }
   })
 
   fastify.post('/chat', async (request, reply) => {
@@ -163,6 +194,14 @@ export async function conversationsRoutes(fastify: FastifyInstance) {
       .where(eq(messages.conversation_id, conv.id)).orderBy(asc(messages.created_at))
     const transcript = convMsgs.map(m => `[${m.role}] ${m.content}`).join('\n')
 
+    // Reproduction replay — build a tokenized link an engineer can open.
+    let recordingUrl: string | undefined
+    if (parsed.data.recording_id) {
+      const [rec] = await db.select({ token: recordings.view_token }).from(recordings)
+        .where(and(eq(recordings.id, parsed.data.recording_id), eq(recordings.client_id, identity.clientId))).limit(1)
+      if (rec) recordingUrl = `${config.publicUrl}/replay/${parsed.data.recording_id}?t=${rec.token}`
+    }
+
     try {
       const result = await sink.createTicket({
         title: parsed.data.title,
@@ -176,6 +215,7 @@ export async function conversationsRoutes(fastify: FastifyInstance) {
         internalContext,
         transcript,
         diagnostics: parsed.data.diagnostics,
+        recordingUrl,
       })
       const [row] = await db.insert(tickets).values({
         conversation_id: conv.id,
@@ -184,6 +224,7 @@ export async function conversationsRoutes(fastify: FastifyInstance) {
         url: result.url ?? null,
         title: parsed.data.title,
         status: 'created',
+        recording_id: parsed.data.recording_id ?? null,
       }).returning()
       await db.update(conversations).set({ status: 'escalated' }).where(eq(conversations.id, conv.id))
       return { data: { ticket: row } }

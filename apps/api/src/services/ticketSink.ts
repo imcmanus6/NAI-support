@@ -24,6 +24,7 @@ export interface TicketDraft {
   internalContext?: string       // engineer-only docs retrieved server-side (never customer-visible)
   transcript?: string            // the full support conversation
   diagnostics?: Diagnostics      // host-page console/network/errors captured around the issue
+  recordingUrl?: string          // link to an rrweb reproduction replay
 }
 
 export interface TicketResult {
@@ -65,6 +66,7 @@ class BrieflyTicketSink implements TicketSink {
       ? `Reported by: ${[draft.customerName, draft.customerEmail].filter(Boolean).join(' · ')}\n\n`
       : ''
     const description = reportedBy + draft.description
+      + (draft.recordingUrl ? `\n\n🎥 Reproduction replay: ${draft.recordingUrl}` : '')
       + (draft.context ? formatContextBlock(draft.context) : '')
       + (draft.transcript ? `\n\n— Conversation —\n${draft.transcript}` : '')
       + formatDiagnosticsBlock(draft.diagnostics)

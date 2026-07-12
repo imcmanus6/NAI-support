@@ -17,6 +17,7 @@ export const config = {
   },
   openaiApiKey: process.env.OPENAI_API_KEY ?? '',
   adminToken: process.env.ADMIN_TOKEN ?? '',   // gate for the operator admin API
+  publicUrl: process.env.NAI_PUBLIC_URL ?? 'http://localhost:4000',  // for replay links
   customerToken: {
     issuer: process.env.CUSTOMER_TOKEN_ISSUER ?? '',
     secret: process.env.CUSTOMER_TOKEN_SECRET ?? '',

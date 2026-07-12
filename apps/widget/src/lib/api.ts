@@ -149,13 +149,26 @@ export function requestHostDiagnostics(timeoutMs = 600): Promise<unknown | undef
   })
 }
 
+export interface RecordingPayload { events: unknown[]; meta?: Record<string, unknown> }
+
+/** Upload an rrweb reproduction; returns the stored recording id (or null). */
+export async function uploadRecording(payload: RecordingPayload): Promise<string | null> {
+  if (DEMO) { await delay(300); return 'demo-recording' }
+  const res = await fetch(url('/api/recordings'), {
+    method: 'POST', headers: authHeaders(), body: JSON.stringify(payload),
+  })
+  if (!res.ok) return null
+  return (await res.json() as { data: { id: string } }).data.id
+}
+
 export async function confirmTicket(
   conversationId: string,
   ticket: ProposedTicket,
   attachment?: Attachment,
+  recordingId?: string,
 ): Promise<{ ok: true }> {
   if (DEMO) { await delay(500); return { ok: true } }
-  const diagnostics = await requestHostDiagnostics()  // pull the host's recording
+  const diagnostics = await requestHostDiagnostics()  // pull the host's console/network capture
   const res = await fetch(url('/api/chat/tickets/confirm'), {
     method: 'POST', headers: authHeaders(),
     body: JSON.stringify({
@@ -164,6 +177,7 @@ export async function confirmTicket(
       description: ticket.description,
       context: { ...clientContext(), attachment },
       diagnostics,
+      recording_id: recordingId,
     }),
   })
   if (!res.ok) throw new Error(`${res.status} ${await res.text()}`)

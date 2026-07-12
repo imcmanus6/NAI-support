@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   sendMessage, confirmTicket, listTickets, getTicketComments, postTicketComment, getConfig,
-  clientContext, shortBrowser, DEMO,
-  type ProposedTicket, type Attachment, type Ticket, type TicketComment,
+  uploadRecording, clientContext, shortBrowser, DEMO,
+  type ProposedTicket, type Attachment, type Ticket, type TicketComment, type RecordingPayload,
 } from './lib/api'
 
 function statusColor(status: string): string {
@@ -46,6 +46,8 @@ export function App() {
   const [busy, setBusy] = useState(false)
   const [conversationId, setConversationId] = useState<string | undefined>()
   const [attachments, setAttachments] = useState<Record<string, Attachment>>({})
+  const [recordings, setRecordings] = useState<Record<string, string>>({})  // itemId → recordingId
+  const recordingFor = useRef<string | null>(null)
   const [view, setView] = useState<'chat' | 'tickets'>('chat')
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [ticketsLoading, setTicketsLoading] = useState(false)
@@ -58,6 +60,25 @@ export function App() {
   const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => { getConfig().then(c => setHelpUrl(c.help_url)).catch(() => {}) }, [])
+
+  // Receive a finished recording from the host loader, upload it, attach to the ticket.
+  useEffect(() => {
+    const onMsg = (e: MessageEvent) => {
+      const d = e.data as { type?: string; data?: RecordingPayload }
+      if (d?.type === 'nai:record-events' && recordingFor.current) {
+        const itemId = recordingFor.current
+        recordingFor.current = null
+        uploadRecording(d.data!).then(id => { if (id) setRecordings(prev => ({ ...prev, [itemId]: id })) }).catch(() => {})
+      }
+    }
+    window.addEventListener('message', onMsg)
+    return () => window.removeEventListener('message', onMsg)
+  }, [])
+
+  function startRecording(itemId: string) {
+    recordingFor.current = itemId
+    window.parent.postMessage({ type: 'nai:record-start' }, '*')  // loader hides us + starts rrweb
+  }
   const fileFor = useRef<string | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
 
@@ -109,7 +130,7 @@ export function App() {
 
   async function onConfirmTicket(itemId: string, ticket: ProposedTicket) {
     if (!conversationId) return
-    await confirmTicket(conversationId, ticket, attachments[itemId])
+    await confirmTicket(conversationId, ticket, attachments[itemId], recordings[itemId])
     setItems(prev => prev.map(it => it.id === itemId ? { ...it, ticketState: 'confirmed' } : it))
   }
 
@@ -228,6 +249,11 @@ export function App() {
                       : (
                         <div className="ticket-actions">
                           <button className="btn primary" onClick={() => void onConfirmTicket(item.id, item.ticket!)}>Raise ticket</button>
+                          {embedded && (
+                            <button className="btn" onClick={() => startRecording(item.id)}>
+                              {recordings[item.id] ? '🎥 Recording attached' : '📹 Record & reproduce'}
+                            </button>
+                          )}
                           <button className="btn" onClick={() => pickAttachment(item.id)}>
                             {attachments[item.id] ? 'Change screenshot' : 'Add screenshot'}
                           </button>

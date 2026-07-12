@@ -110,10 +110,22 @@ export const messages = pgTable('messages', {
   created_at:      timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
+// ── Session recordings (rrweb) — a reproducible capture attached to a ticket ──
+export const recordings = pgTable('recordings', {
+  id:              uuid('id').primaryKey().defaultRandom(),
+  client_id:       uuid('client_id').notNull().references(() => clients.id, { onDelete: 'cascade' }),
+  conversation_id: uuid('conversation_id').references(() => conversations.id, { onDelete: 'set null' }),
+  events_json:     jsonb('events_json').notNull(),         // rrweb event stream (replayable)
+  meta_json:       jsonb('meta_json').notNull().default({}), // { url, duration_ms, events, browser }
+  view_token:      text('view_token').notNull(),           // unguessable token for the replay link
+  created_at:      timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
 // ── Tickets: briefs created back in Briefly (or, later, Jira) ─────────────────
 export const tickets = pgTable('tickets', {
   id:              uuid('id').primaryKey().defaultRandom(),
   conversation_id: uuid('conversation_id').notNull().references(() => conversations.id, { onDelete: 'cascade' }),
+  recording_id:    uuid('recording_id'),                   // optional rrweb replay
   destination:     ticketDestinationEnum('destination').notNull().default('briefly'),
   external_id:     text('external_id'),        // brief id (Briefly) or issue key (Jira)
   title:           text('title').notNull(),
