@@ -27,6 +27,11 @@ function resolveToken(): string | undefined {
 const CUSTOMER_TOKEN = resolveToken()
 export const DEMO = !CUSTOMER_TOKEN
 
+// API base: empty in dev (Vite proxy forwards /api → the API). In production set
+// VITE_API_URL to the deployed NAI API origin, e.g. https://api.nai.dev.
+const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? ''
+const url = (path: string) => `${API_BASE}${path}`
+
 export interface Attachment { name: string; type: string; size: number }
 export interface ClientContext {
   url?: string
@@ -108,7 +113,7 @@ function demoReply(message: string): ChatResponse {
 
 export async function sendMessage(message: string, _conversationId?: string): Promise<ChatResponse> {
   if (DEMO) { await delay(600); return demoReply(message) }
-  const res = await fetch('/api/chat', {
+  const res = await fetch(url('/api/chat'), {
     method: 'POST', headers: authHeaders(),
     body: JSON.stringify({ message, context: clientContext() }),
   })
@@ -141,7 +146,7 @@ export async function confirmTicket(
 ): Promise<{ ok: true }> {
   if (DEMO) { await delay(500); return { ok: true } }
   const diagnostics = await requestHostDiagnostics()  // pull the host's recording
-  const res = await fetch('/api/chat/tickets/confirm', {
+  const res = await fetch(url('/api/chat/tickets/confirm'), {
     method: 'POST', headers: authHeaders(),
     body: JSON.stringify({
       conversation_id: conversationId,
@@ -172,7 +177,7 @@ const DEMO_TICKETS: Ticket[] = [
 
 export async function listTickets(): Promise<Ticket[]> {
   if (DEMO) { await delay(300); return DEMO_TICKETS }
-  const res = await fetch('/api/tickets', { headers: authHeaders() })
+  const res = await fetch(url('/api/tickets'), { headers: authHeaders() })
   if (!res.ok) throw new Error(`${res.status} ${await res.text()}`)
   return (await res.json() as { data: Ticket[] }).data
 }
@@ -198,14 +203,14 @@ const DEMO_COMMENTS: Record<string, TicketComment[]> = {
 
 export async function getTicketComments(ticketId: string): Promise<TicketComment[]> {
   if (DEMO) { await delay(300); return DEMO_COMMENTS[ticketId] ?? [] }
-  const res = await fetch(`/api/tickets/${ticketId}/comments`, { headers: authHeaders() })
+  const res = await fetch(url(`/api/tickets/${ticketId}/comments`), { headers: authHeaders() })
   if (!res.ok) throw new Error(`${res.status} ${await res.text()}`)
   return (await res.json() as { data: TicketComment[] }).data
 }
 
 export async function postTicketComment(ticketId: string, body: string): Promise<void> {
   if (DEMO) { await delay(300); return }
-  const res = await fetch(`/api/tickets/${ticketId}/comments`, {
+  const res = await fetch(url(`/api/tickets/${ticketId}/comments`), {
     method: 'POST', headers: authHeaders(), body: JSON.stringify({ body }),
   })
   if (!res.ok) throw new Error(`${res.status} ${await res.text()}`)

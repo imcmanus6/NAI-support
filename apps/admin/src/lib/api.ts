@@ -25,8 +25,12 @@ export const getAdminToken = () => localStorage.getItem(TOKEN_KEY) ?? ''
 export const setAdminToken = (t: string) => localStorage.setItem(TOKEN_KEY, t)
 export const clearAdminToken = () => localStorage.removeItem(TOKEN_KEY)
 
+// API base: empty in dev (Vite proxy forwards /admin → the API). In production set
+// VITE_API_URL to the deployed NAI API origin, e.g. https://api.nai.dev.
+const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? ''
+
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, {
+  const res = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: {
       'Content-Type': 'application/json',
