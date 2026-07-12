@@ -161,13 +161,18 @@ export async function uploadRecording(payload: RecordingPayload): Promise<string
   return (await res.json() as { data: { id: string } }).data.id
 }
 
+/** A self-serve fix the auto-diagnosis proposes before filing a ticket. */
+export interface Deflection { summary: string; cause: string; steps: string[] }
+export interface ConfirmResult { deflected?: boolean; diagnosis?: Deflection }
+
 export async function confirmTicket(
   conversationId: string,
   ticket: ProposedTicket,
   attachment?: Attachment,
   recordingId?: string,
-): Promise<{ ok: true }> {
-  if (DEMO) { await delay(500); return { ok: true } }
+  force = false,   // the customer tried the suggested fix and still needs a human
+): Promise<ConfirmResult> {
+  if (DEMO) { await delay(500); return {} }
   const diagnostics = await requestHostDiagnostics()  // pull the host's console/network capture
   const res = await fetch(url('/api/chat/tickets/confirm'), {
     method: 'POST', headers: authHeaders(),
@@ -178,10 +183,21 @@ export async function confirmTicket(
       context: { ...clientContext(), attachment },
       diagnostics,
       recording_id: recordingId,
+      force,
     }),
   })
   if (!res.ok) throw new Error(`${res.status} ${await res.text()}`)
-  return { ok: true }
+  return (await res.json() as { data: ConfirmResult }).data
+}
+
+/** Customer confirmed the self-serve steps fixed it — close the conversation, no ticket. */
+export async function resolveConversation(conversationId: string): Promise<void> {
+  if (DEMO) { await delay(200); return }
+  const res = await fetch(url('/api/chat/tickets/resolve'), {
+    method: 'POST', headers: authHeaders(),
+    body: JSON.stringify({ conversation_id: conversationId }),
+  })
+  if (!res.ok) throw new Error(`${res.status} ${await res.text()}`)
 }
 
 export interface Ticket {

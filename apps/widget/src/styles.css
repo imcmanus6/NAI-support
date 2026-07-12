@@ -186,6 +186,12 @@ body {
 .btn:disabled { opacity: .55; cursor: default; }
 .ticket-confirmed { font-size: 13px; color: #16a34a; display: flex; align-items: center; gap: 6px; }
 
+/* Deflection card — the auto-diagnosis suggesting a self-serve fix before filing. */
+.ticket-card.deflect { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); background: color-mix(in srgb, var(--accent) 6%, var(--panel)); }
+.ticket-card.deflect .ticket-label { color: var(--accent); }
+.deflect-steps { margin: 4px 0 12px; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
+.deflect-steps li { font-size: 13px; line-height: 1.4; color: var(--text); }
+
 .composer {
   border-top: 1px solid var(--border);
   padding: 12px;

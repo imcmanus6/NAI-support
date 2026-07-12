@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import {
-  sendMessage, confirmTicket, listTickets, getTicketComments, postTicketComment, getConfig,
+  sendMessage, confirmTicket, resolveConversation, listTickets, getTicketComments, postTicketComment, getConfig,
   uploadRecording, clientContext, shortBrowser, DEMO,
-  type ProposedTicket, type Attachment, type Ticket, type TicketComment, type RecordingPayload,
+  type ProposedTicket, type Attachment, type Ticket, type TicketComment, type RecordingPayload, type Deflection,
 } from './lib/api'
 
 function statusColor(status: string): string {
@@ -28,7 +28,8 @@ interface ChatItem {
   role: 'customer' | 'agent'
   content: string
   ticket?: ProposedTicket | null
-  ticketState?: 'pending' | 'confirmed'
+  ticketState?: 'pending' | 'confirmed' | 'resolved'
+  deflection?: Deflection   // self-serve fix proposed before filing
 }
 
 const GREETING: ChatItem = {
@@ -128,10 +129,21 @@ export function App() {
     }
   }
 
-  async function onConfirmTicket(itemId: string, ticket: ProposedTicket) {
+  async function onConfirmTicket(itemId: string, ticket: ProposedTicket, force = false) {
     if (!conversationId) return
-    await confirmTicket(conversationId, ticket, attachments[itemId], recordings[itemId])
+    const res = await confirmTicket(conversationId, ticket, attachments[itemId], recordings[itemId], force)
+    if (res.deflected && res.diagnosis) {
+      // Auto-diagnosis thinks the customer can fix this — show the steps, hold the ticket.
+      setItems(prev => prev.map(it => it.id === itemId ? { ...it, deflection: res.diagnosis } : it))
+      return
+    }
     setItems(prev => prev.map(it => it.id === itemId ? { ...it, ticketState: 'confirmed' } : it))
+  }
+
+  async function onResolved(itemId: string) {
+    if (!conversationId) return
+    setItems(prev => prev.map(it => it.id === itemId ? { ...it, ticketState: 'resolved' } : it))
+    try { await resolveConversation(conversationId) } catch { /* best-effort close */ }
   }
 
   function pickAttachment(itemId: string) {
@@ -233,34 +245,53 @@ export function App() {
               </div>
               {item.ticket && (
                 <div style={{ marginTop: 10 }}>
-                  <div className="ticket-card">
-                    <div className="ticket-label">Ticket to raise</div>
-                    <div className="ticket-title">{item.ticket.title}</div>
-                    <div className="ticket-desc">{item.ticket.description}</div>
-
-                    <div className="ticket-context">
-                      <span className="ctx-key">Automatically included</span>
-                      <span>{contextSummary()} · your IP &amp; location</span>
-                      {attachments[item.id] && <span className="attach-chip">📎 {attachments[item.id].name}</span>}
+                  {item.ticketState === 'confirmed' ? (
+                    <div className="ticket-card">
+                      <div className="ticket-confirmed">✓ Ticket raised — a teammate will follow up.</div>
                     </div>
+                  ) : item.ticketState === 'resolved' ? (
+                    <div className="ticket-card">
+                      <div className="ticket-confirmed">✓ Glad that sorted it! I've closed this out — start a new chat anytime.</div>
+                    </div>
+                  ) : item.deflection ? (
+                    // Auto-diagnosis found a fix the customer can apply — offer it before filing.
+                    <div className="ticket-card deflect">
+                      <div className="ticket-label">💡 Try this first</div>
+                      <div className="ticket-desc">{item.deflection.summary}</div>
+                      <ol className="deflect-steps">
+                        {item.deflection.steps.map((s, i) => <li key={i}>{s}</li>)}
+                      </ol>
+                      <div className="ticket-actions">
+                        <button className="btn primary" onClick={() => void onResolved(item.id)}>✓ That fixed it</button>
+                        <button className="btn" onClick={() => void onConfirmTicket(item.id, item.ticket!, true)}>Still need help</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="ticket-card">
+                      <div className="ticket-label">Ticket to raise</div>
+                      <div className="ticket-title">{item.ticket.title}</div>
+                      <div className="ticket-desc">{item.ticket.description}</div>
 
-                    {item.ticketState === 'confirmed'
-                      ? <div className="ticket-confirmed">✓ Ticket raised — a teammate will follow up.</div>
-                      : (
-                        <div className="ticket-actions">
-                          <button className="btn primary" onClick={() => void onConfirmTicket(item.id, item.ticket!)}>Raise ticket</button>
-                          {embedded && (
-                            <button className="btn" onClick={() => startRecording(item.id)}>
-                              {recordings[item.id] ? '🎥 Recording attached' : '📹 Record & reproduce'}
-                            </button>
-                          )}
-                          <button className="btn" onClick={() => pickAttachment(item.id)}>
-                            {attachments[item.id] ? 'Change screenshot' : 'Add screenshot'}
+                      <div className="ticket-context">
+                        <span className="ctx-key">Automatically included</span>
+                        <span>{contextSummary()} · your IP &amp; location</span>
+                        {attachments[item.id] && <span className="attach-chip">📎 {attachments[item.id].name}</span>}
+                      </div>
+
+                      <div className="ticket-actions">
+                        <button className="btn primary" onClick={() => void onConfirmTicket(item.id, item.ticket!)}>Raise ticket</button>
+                        {embedded && (
+                          <button className="btn" onClick={() => startRecording(item.id)}>
+                            {recordings[item.id] ? '🎥 Recording attached' : '📹 Record & reproduce'}
                           </button>
-                          <button className="btn" onClick={() => onDismissTicket(item.id)}>Not now</button>
-                        </div>
-                      )}
-                  </div>
+                        )}
+                        <button className="btn" onClick={() => pickAttachment(item.id)}>
+                          {attachments[item.id] ? 'Change screenshot' : 'Add screenshot'}
+                        </button>
+                        <button className="btn" onClick={() => onDismissTicket(item.id)}>Not now</button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

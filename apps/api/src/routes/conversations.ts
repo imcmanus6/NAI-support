@@ -46,6 +46,9 @@ const ConfirmTicketSchema = z.object({
   context: ClientContextSchema,   // e.g. an attachment added at confirm time
   diagnostics: DiagnosticsSchema, // host-page console/network/errors captured by the host
   recording_id: z.string().uuid().optional(), // an rrweb reproduction to attach
+  // When the auto-diagnosis judges the issue self-resolvable we show the customer the
+  // fix and hold off filing. `force` is the customer saying "I tried, still need help".
+  force: z.boolean().default(false),
 })
 
 const RecordingSchema = z.object({
@@ -213,6 +216,18 @@ export async function conversationsRoutes(fastify: FastifyInstance) {
       url: context.url,
     })
 
+    // Deflection: if the diagnosis judges the customer can fix this themselves, show
+    // them the steps and DON'T file — unless they've already tried and asked to file
+    // anyway (`force`). Fewer tickets reach a human; the customer gets an instant answer.
+    if (diagnosis?.customer_resolvable && diagnosis.steps.length && !parsed.data.force) {
+      const stepList = diagnosis.steps.map((s, i) => `${i + 1}. ${s}`).join('\n')
+      await db.insert(messages).values({
+        conversation_id: conv.id, role: 'agent',
+        content: `Before we file a ticket — this looks like something you can fix right now:\n${diagnosis.summary}\n\n${stepList}`,
+      })
+      return { data: { deflected: true, diagnosis: { summary: diagnosis.summary, cause: diagnosis.cause, steps: diagnosis.steps } } }
+    }
+
     try {
       const result = await sink.createTicket({
         title: parsed.data.title,
@@ -252,6 +267,28 @@ export async function conversationsRoutes(fastify: FastifyInstance) {
       reply.status(502)
       return { error: 'Could not create ticket', detail: err instanceof Error ? err.message : String(err) }
     }
+  })
+
+  // Customer confirmed the self-serve steps fixed it → close the conversation as
+  // resolved (deflected), no ticket filed. This is the payoff of auto-diagnosis and
+  // the signal a deflection-rate metric reads from.
+  fastify.post('/chat/tickets/resolve', async (request, reply) => {
+    const identity = await resolveCustomer(request)
+    const parsed = z.object({ conversation_id: z.string().uuid() }).safeParse(request.body)
+    if (!parsed.success) { reply.status(400); return { error: 'Invalid request', details: parsed.error.flatten() } }
+
+    const [conv] = await db.select().from(conversations).where(and(
+      eq(conversations.id, parsed.data.conversation_id),
+      eq(conversations.client_id, identity.clientId),
+      eq(conversations.external_customer_id, identity.customerId),
+    )).limit(1)
+    if (!conv) { reply.status(404); return { error: 'Conversation not found' } }
+
+    await db.insert(messages).values({
+      conversation_id: conv.id, role: 'customer', content: '(Resolved — the suggested steps fixed it.)',
+    })
+    await db.update(conversations).set({ status: 'resolved' }).where(eq(conversations.id, conv.id))
+    return { data: { ok: true } }
   })
 
   // The customer's own tickets, with LIVE status pulled from Briefly (like JSM's
