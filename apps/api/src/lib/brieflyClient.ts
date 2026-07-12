@@ -121,6 +121,21 @@ export class BrieflyClient {
     return res.data
   }
 
+  /** Attach a file (e.g. a ticket screenshot) to a brief — multipart, not JSON. */
+  async uploadAttachment(briefId: string, filename: string, contentType: string, data: Buffer): Promise<{ id: string; url: string }> {
+    const fd = new FormData()
+    fd.append('file', new Blob([data], { type: contentType }), filename)
+    // Let fetch set the multipart Content-Type (with boundary) — don't force JSON here.
+    const res = await fetch(`${this.baseUrl}/api/v1/briefs/${briefId}/attachments`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${this.apiKey}` },
+      body: fd,
+    })
+    const body = (await res.json().catch(() => ({}))) as { data?: { id: string; url: string }; error?: string; code?: string }
+    if (!res.ok) throw new BrieflyApiError(res.status, body.code ?? 'ERROR', body.error ?? `Briefly API ${res.status}`)
+    return body.data as { id: string; url: string }
+  }
+
   /** Comments on a brief — the ticket reply thread. */
   async listComments(briefId: string): Promise<BrieflyComment[]> {
     const res = await this.request<{ data: BrieflyComment[] }>(`/api/v1/briefs/${briefId}/comments`)

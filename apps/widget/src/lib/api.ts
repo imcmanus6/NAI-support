@@ -212,16 +212,30 @@ export async function uploadRecording(payload: RecordingPayload): Promise<string
 export interface Deflection { summary: string; cause: string; steps: string[] }
 export interface ConfirmResult { deflected?: boolean; diagnosis?: Deflection }
 
+/** Read a File as raw base64 (no data: prefix) for JSON transport. */
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader()
+    r.onload = () => resolve(String(r.result).split(',')[1] ?? '')
+    r.onerror = () => reject(r.error)
+    r.readAsDataURL(file)
+  })
+}
+
 export async function confirmTicket(
   conversationId: string,
   ticket: ProposedTicket,
   attachment?: Attachment,
   recordingId?: string,
   force = false,   // the customer tried the suggested fix and still needs a human
+  screenshotFile?: File,   // the actual screenshot bytes, uploaded to the ticket
 ): Promise<ConfirmResult> {
   if (DEMO) { await delay(500); return {} }
   const host = (await requestHostDiagnostics()) as HostDiagnostics | undefined  // host console/network + real url
   const ctx = clientContext()
+  const screenshot = screenshotFile
+    ? { name: screenshotFile.name, type: screenshotFile.type || 'image/png', data_base64: await fileToBase64(screenshotFile) }
+    : undefined
   const res = await fetch(url('/api/chat/tickets/confirm'), {
     method: 'POST', headers: authHeaders(),
     body: JSON.stringify({
@@ -231,6 +245,7 @@ export async function confirmTicket(
       context: { ...ctx, url: host?.url ?? ctx.url, attachment },
       diagnostics: host ? { console: host.console, network: host.network, errors: host.errors } : undefined,
       recording_id: recordingId,
+      screenshot,
       force,
     }),
   })

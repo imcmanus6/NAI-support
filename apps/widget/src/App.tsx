@@ -82,6 +82,7 @@ export function App() {
     window.parent.postMessage({ type: 'nai:record-start' }, '*')  // loader hides us + starts rrweb
   }
   const fileFor = useRef<string | null>(null)
+  const fileObjects = useRef<Record<string, File>>({})   // the actual screenshot bytes to upload
   const fileInput = useRef<HTMLInputElement>(null)
 
   function openTickets() {
@@ -140,7 +141,7 @@ export function App() {
 
   async function onConfirmTicket(itemId: string, ticket: ProposedTicket, force = false) {
     if (!conversationId) return
-    const res = await confirmTicket(conversationId, ticket, attachments[itemId], recordings[itemId], force)
+    const res = await confirmTicket(conversationId, ticket, attachments[itemId], recordings[itemId], force, fileObjects.current[itemId])
     if (res.deflected && res.diagnosis) {
       // Auto-diagnosis thinks the customer can fix this — show the steps, hold the ticket.
       setItems(prev => prev.map(it => it.id === itemId ? { ...it, deflection: res.diagnosis } : it))
@@ -165,6 +166,7 @@ export function App() {
     const itemId = fileFor.current
     if (file && itemId) {
       setAttachments(prev => ({ ...prev, [itemId]: { name: file.name, type: file.type || 'file', size: file.size } }))
+      fileObjects.current[itemId] = file   // keep the bytes so we can upload the screenshot
     }
     e.target.value = ''
     fileFor.current = null

@@ -48,6 +48,12 @@ const ConfirmTicketSchema = z.object({
   context: ClientContextSchema,   // e.g. an attachment added at confirm time
   diagnostics: DiagnosticsSchema, // host-page console/network/errors captured by the host
   recording_id: z.string().uuid().optional(), // an rrweb reproduction to attach
+  // A screenshot the customer attached — uploaded to the ticket Brief as a real file.
+  screenshot: z.object({
+    name: z.string().max(255),
+    type: z.string().max(120),
+    data_base64: z.string().max(20_000_000),
+  }).optional(),
   // When the auto-diagnosis judges the issue self-resolvable we show the customer the
   // fix and hold off filing. `force` is the customer saying "I tried, still need help".
   force: z.boolean().default(false),
@@ -224,7 +230,7 @@ export async function conversationsRoutes(fastify: FastifyInstance) {
 
   // Gated ticket write: confirm a drafted ticket → create the Brief in Briefly.
   // Kept separate from /chat so a ticket is never filed without an explicit step.
-  fastify.post('/chat/tickets/confirm', async (request, reply) => {
+  fastify.post('/chat/tickets/confirm', { bodyLimit: 15 * 1024 * 1024 }, async (request, reply) => {
     const identity = await resolveCustomer(request)
     const parsed = ConfirmTicketSchema.safeParse(request.body)
     if (!parsed.success) { reply.status(400); return { error: 'Invalid request', details: parsed.error.flatten() } }
@@ -328,6 +334,16 @@ export async function conversationsRoutes(fastify: FastifyInstance) {
         status: 'created',
         recording_id: parsed.data.recording_id ?? null,
       }).returning()
+
+      // Attach the customer's screenshot to the ticket Brief as a real file, so a
+      // reviewer sees it in the Attachments section. Best-effort — never fails the ticket.
+      if (parsed.data.screenshot && result.externalId) {
+        try {
+          const sc = parsed.data.screenshot
+          await briefly.uploadAttachment(result.externalId, sc.name, sc.type, Buffer.from(sc.data_base64, 'base64'))
+        } catch (err) { request.log.warn({ err }, 'ticket screenshot upload failed') }
+      }
+
       await db.update(conversations).set({ status: 'escalated' }).where(eq(conversations.id, conv.id))
       return { data: { ticket: row } }
     } catch (err) {
