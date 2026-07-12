@@ -1,0 +1,19 @@
+{
+  "name": "nai",
+  "private": true,
+  "version": "0.1.0",
+  "description": "NAI — AI support agent that reads your docs and your live data, and files tickets into your own tools.",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev -w apps/api\" \"npm run dev -w apps/admin\" \"npm run dev -w apps/widget\" \"npm run dev -w apps/site\"",
+    "typecheck": "npm run typecheck -w apps/api && npm run typecheck -w apps/admin && npm run typecheck -w apps/widget",
+    "test": "npm run test -w apps/api"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0",
+    "typescript": "^5.5.0"
+  }
+}

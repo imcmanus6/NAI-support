@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NAI — AI support that knows your product</title>
+  <style>
+    :root {
+      --bg: #1e1e1e;            /* editor */
+      --panel: #252526;         /* sidebar */
+      --activity: #333333;      /* activity bar */
+      --titlebar: #323233;
+      --border: #2b2b2b;
+      --text: #d4d4d4;
+      --dim: #858585;
+      --brand: #7c6cff;         /* NAI accent */
+      --brand2: #22d3ee;
+      /* syntax */
+      --kw: #569cd6; --str: #ce9178; --com: #6a9955; --fn: #dcdcaa;
+      --ty: #4ec9b0; --num: #b5cea8; --var: #9cdcfe; --punct: #d4d4d4;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; background: #141414; }
+    body {
+      font-family: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+      color: var(--text); display: flex; align-items: center; justify-content: center;
+      min-height: 100vh; padding: 24px;
+    }
+    .ide {
+      width: 100%; max-width: 1080px; height: min(720px, 88vh);
+      background: var(--bg); border: 1px solid #000; border-radius: 12px; overflow: hidden;
+      display: flex; flex-direction: column;
+      box-shadow: 0 30px 80px rgba(0,0,0,.6), 0 0 0 1px rgba(124,108,255,.15);
+    }
+    /* title bar */
+    .titlebar {
+      height: 40px; background: var(--titlebar); display: flex; align-items: center;
+      padding: 0 14px; gap: 8px; border-bottom: 1px solid #000; flex-shrink: 0;
+    }
+    .dot { width: 12px; height: 12px; border-radius: 50%; }
+    .dot.r { background: #ff5f57; } .dot.y { background: #febc2e; } .dot.g { background: #28c840; }
+    .title { margin: 0 auto; font-size: 12.5px; color: var(--dim); }
+    .title b { color: var(--brand); font-weight: 700; letter-spacing: .5px; }
+    /* body */
+    .body { flex: 1; display: flex; min-height: 0; }
+    .activity {
+      width: 48px; background: var(--activity); display: flex; flex-direction: column;
+      align-items: center; padding-top: 10px; gap: 16px; flex-shrink: 0;
+    }
+    .activity .ic { color: #858585; font-size: 18px; cursor: default; }
+    .activity .ic.on { color: #fff; border-left: 2px solid var(--brand); padding-left: 2px; margin-left: -4px; }
+    .logo { width: 26px; height: 26px; border-radius: 7px; margin-bottom: 6px;
+      background: linear-gradient(135deg, var(--brand), var(--brand2));
+      display: flex; align-items: center; justify-content: center; color: #0b0b0b; font-weight: 800; font-size: 12px; }
+    /* explorer */
+    .explorer { width: 220px; background: var(--panel); border-right: 1px solid var(--border); padding: 10px 0; flex-shrink: 0; overflow-y: auto; }
+    .explorer .head { font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--dim); padding: 4px 16px 8px; }
+    .file { padding: 4px 16px 4px 24px; font-size: 13px; color: #cfcfcf; cursor: pointer; display: flex; gap: 7px; }
+    .file:hover { background: #2a2d2e; }
+    .file.on { background: #37373d; }
+    .file .mut { color: var(--dim); }
+    .folder { padding: 4px 16px; font-size: 13px; color: #cfcfcf; display: flex; gap: 6px; }
+    /* editor */
+    .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+    .tabs { display: flex; background: #252526; border-bottom: 1px solid #000; flex-shrink: 0; }
+    .tab { padding: 8px 16px; font-size: 12.5px; color: var(--dim); border-right: 1px solid #000; cursor: pointer; white-space: nowrap; }
+    .tab.on { background: var(--bg); color: #fff; border-top: 1px solid var(--brand); }
+    .editor { flex: 1; overflow: auto; padding: 14px 0; }
+    pre { margin: 0; font-size: 13.5px; line-height: 1.65; }
+    .file-view { display: none; }
+    .file-view.on { display: block; }
+    .ln { display: flex; }
+    .ln > .no { width: 44px; text-align: right; padding-right: 16px; color: #4b4b4b; user-select: none; flex-shrink: 0; }
+    .ln > .code { white-space: pre; padding-right: 16px; }
+    .kw { color: var(--kw); } .str { color: var(--str); } .com { color: var(--com); }
+    .fn { color: var(--fn); } .ty { color: var(--ty); } .num { color: var(--num); }
+    .var { color: var(--var); } .h { color: #fff; font-weight: 700; } .b { color: var(--brand); }
+    .em { color: var(--brand2); }
+    /* terminal */
+    .terminal { height: 190px; background: #181818; border-top: 1px solid #000; display: flex; flex-direction: column; flex-shrink: 0; }
+    .term-head { display: flex; gap: 16px; padding: 7px 16px; font-size: 11px; color: var(--dim); border-bottom: 1px solid var(--border); }
+    .term-head .on { color: #fff; border-bottom: 2px solid var(--brand); padding-bottom: 6px; margin-bottom: -8px; }
+    .term-body { flex: 1; overflow: auto; padding: 10px 16px; font-size: 13px; line-height: 1.6; }
+    .t-dim { color: var(--dim); } .t-ok { color: #4ec9b0; } .t-brand { color: var(--brand); }
+    .t-cust { color: #9cdcfe; } .cursor { animation: blink 1.1s steps(1) infinite; color: var(--brand); }
+    @keyframes blink { 50% { opacity: 0; } }
+    /* status bar */
+    .status { height: 24px; background: linear-gradient(90deg, var(--brand), #5b4ecf); color: #fff;
+      display: flex; align-items: center; gap: 16px; padding: 0 12px; font-size: 11.5px; flex-shrink: 0; }
+    .status .sp { margin-left: auto; }
+    @media (max-width: 720px) { .explorer, .activity { display: none; } }
+  </style>
+</head>
+<body>
+  <div class="ide">
+    <div class="titlebar">
+      <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+      <span class="title"><b>NAI</b> — AI support that knows your product · nai.config.ts</span>
+    </div>
+
+    <div class="body">
+      <div class="activity">
+        <div class="logo">N</div>
+        <span class="ic on">🗂</span>
+        <span class="ic">🔍</span>
+        <span class="ic">⑂</span>
+        <span class="ic">▷</span>
+      </div>
+
+      <div class="explorer">
+        <div class="head">NAI · Explorer</div>
+        <div class="folder">▾ 📁 your-app</div>
+        <div class="file" data-file="config">📄 nai.config.ts</div>
+        <div class="file" data-file="readme">📄 <span>README.md</span></div>
+        <div class="file" data-file="install">📄 install.sh</div>
+        <div class="folder" style="padding-left:24px">▾ 📁 features</div>
+        <div class="file" data-file="config" style="padding-left:40px">📄 <span class="mut">knowledge.ts</span></div>
+        <div class="file" data-file="config" style="padding-left:40px">📄 <span class="mut">permissions.ts</span></div>
+        <div class="file" data-file="config" style="padding-left:40px">📄 <span class="mut">tickets.ts</span></div>
+        <div class="file" data-file="config" style="padding-left:40px">📄 <span class="mut">recording.ts</span></div>
+        <div class="file" data-file="config" style="padding-left:40px">📄 <span class="mut">organizations.ts</span></div>
+      </div>
+
+      <div class="main">
+        <div class="tabs">
+          <div class="tab on" data-file="config">nai.config.ts</div>
+          <div class="tab" data-file="readme">README.md</div>
+          <div class="tab" data-file="install">install.sh</div>
+        </div>
+
+        <div class="editor">
+          <!-- nai.config.ts -->
+          <pre class="file-view on" id="config"><span class="ln"><span class="no">1</span><span class="code"><span class="com">// NAI — AI support that actually knows your product.</span></span></span>
+<span class="ln"><span class="no">2</span><span class="code"><span class="com">// Drop it in. It reads your docs *and* your live data.</span></span></span>
+<span class="ln"><span class="no">3</span><span class="code"></span></span>
+<span class="ln"><span class="no">4</span><span class="code"><span class="kw">import</span> { <span class="var">defineSupport</span>, <span class="var">briefly</span>, <span class="var">readonly</span>, <span class="var">byDomain</span> } <span class="kw">from</span> <span class="str">'@nai/core'</span></span></span>
+<span class="ln"><span class="no">5</span><span class="code"></span></span>
+<span class="ln"><span class="no">6</span><span class="code"><span class="kw">export default</span> <span class="fn">defineSupport</span>({</span></span>
+<span class="ln"><span class="no">7</span><span class="code">  <span class="var">knowledge</span>:     <span class="var">briefly</span>.<span class="fn">spaces</span>([<span class="str">'help'</span>, <span class="str">'internal'</span>]),  <span class="com">// answers from your docs</span></span></span>
+<span class="ln"><span class="no">8</span><span class="code">  <span class="var">liveData</span>:      <span class="fn">readonly</span>(<span class="var">yourDatabase</span>),                <span class="com">// "why can't I access X?" → solved</span></span></span>
+<span class="ln"><span class="no">9</span><span class="code">  <span class="var">tickets</span>:       <span class="var">briefly</span>.<span class="fn">space</span>(<span class="str">'support'</span>),              <span class="com">// filed where your team already works</span></span></span>
+<span class="ln"><span class="no">10</span><span class="code">  <span class="var">recording</span>:     <span class="kw">true</span>,                                  <span class="com">// console · network · errors, auto-attached</span></span></span>
+<span class="ln"><span class="no">11</span><span class="code">  <span class="var">organizations</span>: <span class="fn">byDomain</span>(),                            <span class="com">// teammates share a ticket queue</span></span></span>
+<span class="ln"><span class="no">12</span><span class="code">})</span></span></pre>
+
+          <!-- README.md -->
+          <pre class="file-view" id="readme"><span class="ln"><span class="no">1</span><span class="code"><span class="h"># NAI</span></span></span>
+<span class="ln"><span class="no">2</span><span class="code"><span class="b">### AI support that reads your docs *and* your database.</span></span></span>
+<span class="ln"><span class="no">3</span><span class="code"></span></span>
+<span class="ln"><span class="no">4</span><span class="code">Traditional help desks only know FAQ articles.</span></span>
+<span class="ln"><span class="no">5</span><span class="code">NAI knows your product — <span class="em">and the person asking.</span></span></span>
+<span class="ln"><span class="no">6</span><span class="code"></span></span>
+<span class="ln"><span class="no">7</span><span class="code">- 📚  Answers from your knowledge base</span></span>
+<span class="ln"><span class="no">8</span><span class="code">- 🔐  Looks up the user's <span class="em">real permissions</span></span></span>
+<span class="ln"><span class="no">9</span><span class="code">- 🎫  Files tickets into your own tools</span></span>
+<span class="ln"><span class="no">10</span><span class="code">- 🎥  Captures a recording of what went wrong</span></span>
+<span class="ln"><span class="no">11</span><span class="code">- 🏢  Groups customers by domain</span></span>
+<span class="ln"><span class="no">12</span><span class="code"></span></span>
+<span class="ln"><span class="no">13</span><span class="code"><span class="com">> Install once. It gets smarter with every doc you write.</span></span></span></pre>
+
+          <!-- install.sh -->
+          <pre class="file-view" id="install"><span class="ln"><span class="no">1</span><span class="code"><span class="com"># Add NAI to your app in two lines.</span></span></span>
+<span class="ln"><span class="no">2</span><span class="code"><span class="fn">npm</span> i @nai/widget</span></span>
+<span class="ln"><span class="no">3</span><span class="code"></span></span>
+<span class="ln"><span class="no">4</span><span class="code"><span class="com"># Embed — NAI identifies the user and reads your hub.</span></span></span>
+<span class="ln"><span class="no">5</span><span class="code"><span class="punct">&lt;</span><span class="ty">script</span> <span class="var">src</span>=<span class="str">"https://cdn.nai.dev/widget.js"</span></span></span>
+<span class="ln"><span class="no">6</span><span class="code">        <span class="var">data-key</span>=<span class="str">"pk_live_•••••••••"</span><span class="punct">&gt;&lt;/</span><span class="ty">script</span><span class="punct">&gt;</span></span></span></pre>
+        </div>
+
+        <div class="terminal">
+          <div class="term-head"><span class="on">TERMINAL</span><span>PROBLEMS</span><span>OUTPUT</span></div>
+          <div class="term-body">
+            <div><span class="t-brand">$</span> nai dev</div>
+            <div class="t-dim">  ▸ loading knowledge · 26 docs</div>
+            <div class="t-dim">  ▸ connecting live data · read-only <span class="t-ok">✓</span></div>
+            <div>  <span class="t-ok">✓</span> agent ready on :4000</div>
+            <div>&nbsp;</div>
+            <div><span class="t-cust">customer ›</span> why can't I open the Q3 report?</div>
+            <div><span class="t-brand">nai      ›</span> You're a <b>Viewer</b> on that space — editing needs <b>Editor</b>.</div>
+            <div>           Want me to raise an access request?<span class="cursor">▍</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="status">
+      <span>⎇ main</span>
+      <span>NAI v0.1</span>
+      <span>● Agent ready</span>
+      <span class="sp">TypeScript</span>
+      <span>UTF-8</span>
+      <span>⚡ nai.dev</span>
+    </div>
+  </div>
+
+  <script type="module">
+    const files = document.querySelectorAll('.file-view')
+    const tabs = document.querySelectorAll('.tab')
+    function show(name) {
+      files.forEach(f => f.classList.toggle('on', f.id === name))
+      tabs.forEach(t => t.classList.toggle('on', t.dataset.file === name))
+      const label = { config: 'nai.config.ts', readme: 'README.md', install: 'install.sh' }[name]
+      document.querySelector('.title').innerHTML = '<b>NAI</b> — AI support that knows your product · ' + label
+    }
+    document.querySelectorAll('[data-file]').forEach(el =>
+      el.addEventListener('click', () => show(el.dataset.file)))
+  </script>
+</body>
+</html>
