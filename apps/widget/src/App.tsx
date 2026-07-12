@@ -125,7 +125,13 @@ export function App() {
         ticketState: res.proposed_ticket ? 'pending' : undefined,
       }])
     } catch (e) {
-      setItems(prev => [...prev, { id: `e-${prev.length}`, role: 'agent', content: `Something went wrong: ${String(e)}` }])
+      console.error('[support] send failed:', e)
+      // A TypeError from fetch means the network/server was unreachable — say so plainly
+      // and keep it retryable, rather than dumping "TypeError: Failed to fetch" at the customer.
+      const offline = e instanceof TypeError
+      setItems(prev => [...prev, { id: `e-${prev.length}`, role: 'agent', content: offline
+        ? "I couldn't reach support just now — please check your connection and send that again."
+        : "Something went wrong on our end. Please try again in a moment." }])
     } finally {
       setBusy(false)
       setStatus(null)
