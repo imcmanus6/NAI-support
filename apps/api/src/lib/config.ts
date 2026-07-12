@@ -9,9 +9,11 @@ function required(name: string): string {
 
 export const config = {
   databaseUrl: required('DATABASE_URL'),
+  // Env Briefly creds are a FALLBACK — per-client credentials (clients table) take
+  // precedence, so these aren't required at startup in a multi-tenant deployment.
   briefly: {
-    apiUrl: required('BRIEFLY_API_URL'),
-    apiKey: required('BRIEFLY_API_KEY'),
+    apiUrl: process.env.BRIEFLY_API_URL ?? 'http://localhost:3001',
+    apiKey: process.env.BRIEFLY_API_KEY ?? '',
   },
   openaiApiKey: process.env.OPENAI_API_KEY ?? '',
   adminToken: process.env.ADMIN_TOKEN ?? '',   // gate for the operator admin API
