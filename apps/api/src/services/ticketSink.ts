@@ -9,6 +9,7 @@ import { db } from '../db/client.js'
 import { clientSpaces } from '../db/schema.js'
 import type { BrieflyClient } from '../lib/brieflyClient.js'
 import { formatContextBlock, formatDiagnosticsBlock, type TicketContext, type Diagnostics } from '../lib/requestContext.js'
+import { formatDiagnosisBlock, kpiCategory, type Diagnosis } from './diagnose.js'
 
 export type TicketDestination = 'briefly' | 'jira'
 
@@ -25,6 +26,7 @@ export interface TicketDraft {
   transcript?: string            // the full support conversation
   diagnostics?: Diagnostics      // host-page console/network/errors captured around the issue
   recordingUrl?: string          // link to an rrweb reproduction replay
+  diagnosis?: Diagnosis          // AI root-cause analysis
 }
 
 export interface TicketResult {
@@ -66,6 +68,7 @@ class BrieflyTicketSink implements TicketSink {
       ? `Reported by: ${[draft.customerName, draft.customerEmail].filter(Boolean).join(' · ')}\n\n`
       : ''
     const description = reportedBy + draft.description
+      + (draft.diagnosis ? formatDiagnosisBlock(draft.diagnosis) : '')
       + (draft.recordingUrl ? `\n\n🎥 Reproduction replay: ${draft.recordingUrl}` : '')
       + (draft.context ? formatContextBlock(draft.context) : '')
       + (draft.transcript ? `\n\n— Conversation —\n${draft.transcript}` : '')
@@ -85,6 +88,12 @@ class BrieflyTicketSink implements TicketSink {
         context: draft.context ?? {},
         transcript: draft.transcript ?? null,
         diagnostics: draft.diagnostics ?? null,
+        // Feeds the ticketing KPI dashboard (bug / feature / question) + severity.
+        ...(draft.diagnosis ? {
+          category: kpiCategory(draft.diagnosis.category),
+          severity: draft.diagnosis.severity,
+          customer_resolvable: draft.diagnosis.customer_resolvable,
+        } : {}),
       },
     })
     const url = typeof brief.url === 'string' ? brief.url : undefined

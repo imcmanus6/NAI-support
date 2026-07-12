@@ -16,6 +16,7 @@ import { getTicketSink, TicketSinkError } from '../services/ticketSink.js'
 import { buildTicketContext, type ClientContext } from '../lib/requestContext.js'
 import { searchSpaces } from '../services/knowledge.js'
 import { brieflyClientFor } from '../lib/brieflyClient.js'
+import { diagnose } from '../services/diagnose.js'
 import { resolveTicketScope, emailDomain, type TicketScope } from '../services/ticketVisibility.js'
 
 const ClientContextSchema = z.object({
@@ -202,6 +203,16 @@ export async function conversationsRoutes(fastify: FastifyInstance) {
       if (rec) recordingUrl = `${config.publicUrl}/replay/${parsed.data.recording_id}?t=${rec.token}`
     }
 
+    // AI auto-diagnosis — root cause + category/severity, attached to the ticket.
+    const diagnosis = await diagnose({
+      title: parsed.data.title,
+      description: parsed.data.description,
+      transcript,
+      diagnostics: parsed.data.diagnostics,
+      internalContext,
+      url: context.url,
+    })
+
     try {
       const result = await sink.createTicket({
         title: parsed.data.title,
@@ -216,6 +227,7 @@ export async function conversationsRoutes(fastify: FastifyInstance) {
         transcript,
         diagnostics: parsed.data.diagnostics,
         recordingUrl,
+        diagnosis: diagnosis ?? undefined,
       })
       const [row] = await db.insert(tickets).values({
         conversation_id: conv.id,
