@@ -53,7 +53,9 @@
       })
     }
   }
-  function diagnostics() { return { console: consoleBuf.slice(), network: netBuf.slice(), errors: errBuf.slice() } }
+  // Includes the HOST page url/title — the widget runs in an iframe, so this is the
+  // only way it (and the agent) can know what page the customer is actually on.
+  function diagnostics() { return { url: location.href, title: document.title, console: consoleBuf.slice(), network: netBuf.slice(), errors: errBuf.slice() } }
 
   // ── Identity token: host-provided hook, or a cookie-session endpoint ────────
   function getToken() {

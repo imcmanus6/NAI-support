@@ -30,15 +30,16 @@ const ClientContextSchema = z.object({
   attachment: z.object({ name: z.string().max(255), type: z.string().max(120), size: z.number() }).optional(),
 }).optional()
 
-const ChatSchema = z.object({
-  message: z.string().min(1).max(4000),
-  context: ClientContextSchema,
-})
 const DiagnosticsSchema = z.object({
   console: z.array(z.object({ level: z.string(), message: z.string() })).max(50).optional(),
   network: z.array(z.object({ method: z.string(), url: z.string(), status: z.number(), ms: z.number() })).max(50).optional(),
   errors: z.array(z.object({ message: z.string() })).max(50).optional(),
 }).optional()
+const ChatSchema = z.object({
+  message: z.string().min(1).max(4000),
+  context: ClientContextSchema,
+  diagnostics: DiagnosticsSchema,   // host-page console/network for THIS turn (live bug context)
+})
 
 const ConfirmTicketSchema = z.object({
   conversation_id: z.string().uuid(),
@@ -183,13 +184,20 @@ export async function conversationsRoutes(fastify: FastifyInstance) {
     })
     const send = (obj: unknown) => res.write(JSON.stringify(obj) + '\n')
     send({ type: 'step', label: 'Looking into it…' })
+    const diag = parsed.data.diagnostics
+    const hasDiag = !!diag && !!(diag.console?.length || diag.network?.length || diag.errors?.length)
+    if (hasDiag) send({ type: 'step', label: 'Reviewing the errors on your page…' })
 
     try {
       const result = await runAgentTurn(
         ctx,
         history.filter(m => m.role !== 'system').map(m => ({ role: m.role as 'customer' | 'agent', content: m.content })),
         parsed.data.message,
-        label => send({ type: 'step', label }),
+        {
+          onStep: label => send({ type: 'step', label }),
+          pageUrl: parsed.data.context?.url,
+          diagnostics: diag,
+        },
       )
       await db.insert(messages).values({ conversation_id: conv.id, role: 'agent', content: result.reply })
       send({ type: 'result', data: { conversation_id: conv.id, reply: result.reply, proposed_ticket: result.proposedTicket ?? null } })

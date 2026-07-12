@@ -131,9 +131,17 @@ export async function sendMessage(
     for (const s of ['Searching help articles…', 'Checking your account…']) { await delay(450); onStep?.(s) }
     await delay(400); return demoReply(message)
   }
+  // Pull the host page's real url + recent console/network so the agent can reason over
+  // the ACTUAL failure ("your upload POST returned 500") instead of generic advice.
+  const host = (await requestHostDiagnostics()) as HostDiagnostics | undefined
+  const ctx = clientContext()
+  const context = { ...ctx, url: host?.url ?? ctx.url }
+  const diagnostics = host && (host.console?.length || host.network?.length || host.errors?.length)
+    ? { console: host.console, network: host.network, errors: host.errors }
+    : undefined
   const res = await fetch(url('/api/chat'), {
     method: 'POST', headers: authHeaders(),
-    body: JSON.stringify({ message, context: clientContext() }),
+    body: JSON.stringify({ message, context, diagnostics }),
   })
   if (!res.ok || !res.body) throw new Error(`${res.status} ${res.body ? await res.text() : 'no response body'}`)
 
@@ -159,6 +167,15 @@ export async function sendMessage(
   }
   if (!result) throw new Error('The assistant did not return a response.')
   return result
+}
+
+/** What the host loader hands back: the real page url/title + captured console/network. */
+export interface HostDiagnostics {
+  url?: string
+  title?: string
+  console?: { level: string; message: string }[]
+  network?: { method: string; url: string; status: number; ms: number }[]
+  errors?: { message: string }[]
 }
 
 /** Ask the host page (parent window) for its captured console/network/error buffers. */
@@ -203,15 +220,16 @@ export async function confirmTicket(
   force = false,   // the customer tried the suggested fix and still needs a human
 ): Promise<ConfirmResult> {
   if (DEMO) { await delay(500); return {} }
-  const diagnostics = await requestHostDiagnostics()  // pull the host's console/network capture
+  const host = (await requestHostDiagnostics()) as HostDiagnostics | undefined  // host console/network + real url
+  const ctx = clientContext()
   const res = await fetch(url('/api/chat/tickets/confirm'), {
     method: 'POST', headers: authHeaders(),
     body: JSON.stringify({
       conversation_id: conversationId,
       title: ticket.title,
       description: ticket.description,
-      context: { ...clientContext(), attachment },
-      diagnostics,
+      context: { ...ctx, url: host?.url ?? ctx.url, attachment },
+      diagnostics: host ? { console: host.console, network: host.network, errors: host.errors } : undefined,
       recording_id: recordingId,
       force,
     }),
