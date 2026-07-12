@@ -37,7 +37,8 @@ const GREETING: ChatItem = {
   content: 'Hi! 👋 I\'m here to help. Ask about your account or orders, or tell me what\'s gone wrong and I can raise it with the team.',
 }
 
-const SUGGESTIONS = ['Where is my order?', 'I want a refund', 'The app keeps crashing', 'Reset my password']
+// Prompt suggestions are intentionally omitted until they can be contextual — driven
+// by the page the user is on and what we know about them, not a canned generic list.
 
 export function App() {
   const [items, setItems] = useState<ChatItem[]>([GREETING])
@@ -245,14 +246,9 @@ export function App() {
           )}
         </div>
 
-        {items.length <= 1 && (
+        {items.length <= 1 && helpUrl && (
           <div className="suggestions">
-            {SUGGESTIONS.map(s => (
-              <button key={s} className="chip" onClick={() => void submit(s)}>{s}</button>
-            ))}
-            {helpUrl && (
-              <a className="chip help-chip" href={helpUrl} target="_blank" rel="noopener noreferrer">📚 Browse the Help Center →</a>
-            )}
+            <a className="chip help-chip" href={helpUrl} target="_blank" rel="noopener noreferrer">📚 Browse the Help Center →</a>
           </div>
         )}
 
