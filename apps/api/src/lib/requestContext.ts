@@ -88,6 +88,29 @@ export interface Diagnostics {
   errors?: { message: string }[]
 }
 
+/**
+ * Union two diagnostics snapshots, de-duplicating and keeping the most recent entries.
+ * Used to accumulate what the chat saw across turns with the confirm-time snapshot, so a
+ * filed ticket diagnoses from the SAME console/network the agent reasoned over — even
+ * after the host page's rolling buffer has moved on. Returns undefined if nothing at all.
+ */
+export function mergeDiagnostics(a?: Diagnostics, b?: Diagnostics, cap = 40): Diagnostics | undefined {
+  const uniqTail = <T>(arr: T[]): T[] => {
+    const seen = new Set<string>()
+    const out: T[] = []
+    for (const x of arr) { const k = JSON.stringify(x); if (!seen.has(k)) { seen.add(k); out.push(x) } }
+    return out.slice(-cap)   // keep the newest `cap`
+  }
+  const consoleL = uniqTail([...(a?.console ?? []), ...(b?.console ?? [])])
+  const network = uniqTail([...(a?.network ?? []), ...(b?.network ?? [])])
+  const errors = uniqTail([...(a?.errors ?? []), ...(b?.errors ?? [])])
+  const out: Diagnostics = {}
+  if (consoleL.length) out.console = consoleL
+  if (network.length) out.network = network
+  if (errors.length) out.errors = errors
+  return Object.keys(out).length ? out : undefined
+}
+
 /** Formats captured diagnostics into an engineer-readable block (or '' if empty). */
 export function formatDiagnosticsBlock(d: Diagnostics | undefined): string {
   if (!d) return ''

@@ -13,7 +13,7 @@ import { config } from '../lib/config.js'
 import { resolveCustomer } from '../lib/customerAuth.js'
 import { runAgentTurn, type AgentContext } from '../services/supportAgent.js'
 import { getTicketSink, TicketSinkError } from '../services/ticketSink.js'
-import { buildTicketContext, type ClientContext } from '../lib/requestContext.js'
+import { buildTicketContext, mergeDiagnostics, type ClientContext, type Diagnostics } from '../lib/requestContext.js'
 import { searchSpaces } from '../services/knowledge.js'
 import { brieflyClientFor } from '../lib/brieflyClient.js'
 import { diagnose } from '../services/diagnose.js'
@@ -151,6 +151,19 @@ export async function conversationsRoutes(fastify: FastifyInstance) {
 
     await db.insert(messages).values({ conversation_id: conv.id, role: 'customer', content: parsed.data.message })
 
+    // Accumulate this turn's browser diagnostics onto the conversation, so a ticket filed
+    // later can diagnose from the SAME console/network the chat saw — even after the host
+    // page's rolling buffer has moved on. Stored under a namespaced key on context_json.
+    if (parsed.data.diagnostics) {
+      const prevCtx = (conv.context_json ?? {}) as ClientContext & { diagnostics?: Diagnostics }
+      const merged = mergeDiagnostics(prevCtx.diagnostics, parsed.data.diagnostics)
+      if (merged) {
+        await db.update(conversations)
+          .set({ context_json: { ...prevCtx, diagnostics: merged } })
+          .where(eq(conversations.id, conv.id))
+      }
+    }
+
     // Load prior turns + the client's mapped knowledge spaces.
     const history = await db.select().from(messages)
       .where(eq(messages.conversation_id, conv.id))
@@ -231,9 +244,14 @@ export async function conversationsRoutes(fastify: FastifyInstance) {
     const sink = getTicketSink(client.ticket_destination, briefly)
 
     // Merge stored session context with anything sent at confirm (e.g. an attachment),
-    // then re-derive server-side fields (fresh IP/location).
-    const stored = (conv.context_json ?? {}) as ClientContext
+    // then re-derive server-side fields (fresh IP/location). Diagnostics live under a
+    // namespaced key — pull them out so they don't leak into the session-context line.
+    const { diagnostics: storedDiag, ...stored } = (conv.context_json ?? {}) as ClientContext & { diagnostics?: Diagnostics }
     const context = await buildTicketContext(request, { ...stored, ...(parsed.data.context ?? {}) })
+
+    // The console/network the whole conversation saw ∪ the fresh confirm-time snapshot —
+    // so the root-cause analysis uses the same evidence the chat did, not just a late peek.
+    const diagnostics = mergeDiagnostics(storedDiag, parsed.data.diagnostics)
 
     // Retrieve INTERNAL docs for engineers — server-side, so the model never sees them.
     const spaceRows = await db.select().from(clientSpaces).where(eq(clientSpaces.client_id, identity.clientId))
@@ -267,7 +285,7 @@ export async function conversationsRoutes(fastify: FastifyInstance) {
       title: parsed.data.title,
       description: parsed.data.description,
       transcript,
-      diagnostics: parsed.data.diagnostics,
+      diagnostics,
       internalContext,
       permissions,
       url: context.url,
@@ -297,7 +315,7 @@ export async function conversationsRoutes(fastify: FastifyInstance) {
         context,
         internalContext,
         transcript,
-        diagnostics: parsed.data.diagnostics,
+        diagnostics,
         recordingUrl,
         diagnosis: diagnosis ?? undefined,
       })
