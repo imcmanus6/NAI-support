@@ -74,21 +74,32 @@ class PostgresSoftwareDbReader implements SoftwareDbReader {
 
   async getAccount(customerId: string): Promise<CustomerAccount | null> {
     if (!this.cfg.account) return null
-    const rows = await roQuery<CustomerAccount>(this.sql, buildAccountQuery(this.cfg.account), [customerId])
-    return rows[0] ?? null
+    try {
+      const rows = await roQuery<CustomerAccount>(this.sql, buildAccountQuery(this.cfg.account), [customerId])
+      return rows[0] ?? null
+    } catch (err) { warn('getAccount', err); return null }
   }
 
   async getRecentOrders(customerId: string, limit = 10): Promise<CustomerOrder[]> {
     if (!this.cfg.orders) return []
     const safeLimit = Math.min(Math.max(Math.trunc(limit) || 10, 1), 100)
-    return roQuery<CustomerOrder>(this.sql, buildOrdersQuery(this.cfg.orders), [customerId, safeLimit])
+    try {
+      return await roQuery<CustomerOrder>(this.sql, buildOrdersQuery(this.cfg.orders), [customerId, safeLimit])
+    } catch (err) { warn('getRecentOrders', err); return [] }
   }
 
   async getAccess(customerId: string, limit = 50): Promise<CustomerAccess[]> {
     if (!this.cfg.access) return []
     const safeLimit = Math.min(Math.max(Math.trunc(limit) || 50, 1), 200)
-    return roQuery<CustomerAccess>(this.sql, buildAccessQuery(this.cfg.access), [customerId, safeLimit])
+    try {
+      return await roQuery<CustomerAccess>(this.sql, buildAccessQuery(this.cfg.access), [customerId, safeLimit])
+    } catch (err) { warn('getAccess', err); return [] }
   }
+}
+
+// A misconfigured/unreachable software DB must never crash the chat — log and degrade.
+function warn(op: string, err: unknown) {
+  console.warn(`[softwareDb] ${op} failed (returning empty):`, err instanceof Error ? err.message : err)
 }
 
 /**
