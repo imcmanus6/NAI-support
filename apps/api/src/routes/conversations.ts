@@ -394,15 +394,19 @@ export async function conversationsRoutes(fastify: FastifyInstance) {
       let status = t.status as string
       let title = t.title
       let updated_at: string | null = null
+      let resolution: string | null = null   // customer-facing root cause, shown when resolved
       if (t.external_id) {
         try {
           const b = await briefly.getBrief(t.external_id)
           status = String(b.status ?? status)
           title = String(b.title ?? title)
           updated_at = b.updated_at ?? null
+          const custom = (b.custom_properties ?? {}) as Record<string, unknown>
+          const summary = typeof custom.root_cause_summary === 'string' ? custom.root_cause_summary.trim() : ''
+          if (summary) resolution = summary   // set by the reviewer in Briefly
         } catch { /* keep stored values */ }
       }
-      return { id: t.id, title, status, url: t.url, created_at: t.created_at, updated_at, reporter: t.reporter ?? null }
+      return { id: t.id, title, status, url: t.url, created_at: t.created_at, updated_at, reporter: t.reporter ?? null, resolution }
     }))
     return { data, shared: scope.mode === 'org' }
   })

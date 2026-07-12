@@ -203,6 +203,12 @@ export function App() {
                   {prettyStatus(openTicket.status)}
                 </span>
               </div>
+              {openTicket.resolution && (
+                <div className="resolution-card">
+                  <div className="resolution-label">✓ Resolved — what happened</div>
+                  {openTicket.resolution}
+                </div>
+              )}
               <div className="messages">
                 {commentsLoading && <p className="tickets-empty">Loading…</p>}
                 {!commentsLoading && comments.length === 0 && <p className="tickets-empty">No replies yet. Send one below.</p>}

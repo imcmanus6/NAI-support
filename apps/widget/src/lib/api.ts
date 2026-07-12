@@ -255,7 +255,8 @@ export interface Ticket {
   url: string | null
   created_at: string
   updated_at: string | null
-  reporter?: string | null   // present when viewing a shared org's tickets
+  reporter?: string | null      // present when viewing a shared org's tickets
+  resolution?: string | null    // customer-facing root cause, set by the team when resolved
 }
 
 const DEMO_TICKETS: Ticket[] = [

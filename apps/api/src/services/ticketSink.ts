@@ -8,7 +8,7 @@ import { and, eq } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import { clientSpaces } from '../db/schema.js'
 import type { BrieflyClient } from '../lib/brieflyClient.js'
-import { formatContextBlock, formatDiagnosticsBlock, type TicketContext, type Diagnostics } from '../lib/requestContext.js'
+import { formatContextBlock, type TicketContext, type Diagnostics } from '../lib/requestContext.js'
 import { formatDiagnosisBlock, kpiCategory, type Diagnosis } from './diagnose.js'
 
 export type TicketDestination = 'briefly' | 'jira'
@@ -60,40 +60,55 @@ class BrieflyTicketSink implements TicketSink {
       throw new TicketSinkError(409, 'NO_TICKET_SPACE', 'No ticket space configured for this client.')
     }
 
-    // Build the description: customer detail, then auto-captured session context, then
-    // engineer-only internal docs. Internal context is retrieved server-side and only
-    // ever appears here in the ticket — the model never sees it. (Binary attachments are
-    // metadata-only for now — Briefly's /api/v1 has no attachment upload endpoint.)
-    const reportedBy = (draft.customerName || draft.customerEmail)
-      ? `Reported by: ${[draft.customerName, draft.customerEmail].filter(Boolean).join(' · ')}\n\n`
-      : ''
-    const description = reportedBy + draft.description
+    const reporter = [draft.customerName, draft.customerEmail].filter(Boolean).join(' · ')
+
+    // A short description for list previews / export. The rich reviewer view is driven
+    // by the structured custom_properties + the ticket page layout below.
+    const description = (reporter ? `Reported by: ${reporter}\n\n` : '') + draft.description
       + (draft.diagnosis ? formatDiagnosisBlock(draft.diagnosis) : '')
-      + (draft.recordingUrl ? `\n\n🎥 Reproduction replay: ${draft.recordingUrl}` : '')
-      + (draft.context ? formatContextBlock(draft.context) : '')
-      + (draft.transcript ? `\n\n— Conversation —\n${draft.transcript}` : '')
-      + formatDiagnosticsBlock(draft.diagnostics)
-      + (draft.internalContext ? `\n\n— Internal context (engineers only) —\n${draft.internalContext}` : '')
+
+    // Structured ticket data under `custom` — Briefly maps properties_json.custom →
+    // custom_properties, which the TicketDetailsSection / ResolutionSection read. Written
+    // here so a reviewer sees the issue, diagnosis, transcript, browser errors, session
+    // context and recording — and can fill the resolution fields (which start unset).
+    const custom: Record<string, unknown> = {
+      source: 'support-ai',
+      reporter: reporter || null,
+      customer_email: draft.customerEmail ?? null,
+      issue: draft.description,
+      diagnosis: draft.diagnosis ?? null,
+      transcript: draft.transcript ?? null,
+      diagnostics: draft.diagnostics ?? null,       // raw structured console/network/errors
+      recording_url: draft.recordingUrl ?? null,
+      session_context: draft.context ? formatContextBlock(draft.context).replace(/^\n+/, '') : null,
+      internal_context: draft.internalContext ?? null,   // engineer-only; never shown to the customer
+      // Feeds the ticketing KPI dashboard (bug / feature / question) + severity.
+      ...(draft.diagnosis ? {
+        category: kpiCategory(draft.diagnosis.category),
+        severity: draft.diagnosis.severity,
+        customer_resolvable: draft.diagnosis.customer_resolvable,
+      } : {}),
+    }
+
+    // Drive the Brief's section layout so the reviewer actually sees the ticket:
+    // details → screenshots → resolution (editable) → the customer reply thread.
+    const pageSections = [
+      { id: 'ticket_details', type: 'ticket_details', label: 'Ticket details', visible: true },
+      { id: 'attachments', type: 'attachments', label: 'Attachments', visible: true },
+      { id: 'resolution', type: 'resolution', label: 'Resolution', visible: true },
+      { id: 'comments', type: 'comments', label: 'Comments', visible: true },
+    ]
+
     const brief = await this.briefly.createBrief({
       space_id: target.briefly_space_id,
       title: draft.title,
       brief_type: 'action',
       description,
       properties: {
-        source: 'support-ai',
         conversation_id: draft.conversationId,
         customer_id: draft.customerId,
-        customer_email: draft.customerEmail ?? null,
-        customer_name: draft.customerName ?? null,
-        context: draft.context ?? {},
-        transcript: draft.transcript ?? null,
-        diagnostics: draft.diagnostics ?? null,
-        // Feeds the ticketing KPI dashboard (bug / feature / question) + severity.
-        ...(draft.diagnosis ? {
-          category: kpiCategory(draft.diagnosis.category),
-          severity: draft.diagnosis.severity,
-          customer_resolvable: draft.diagnosis.customer_resolvable,
-        } : {}),
+        custom,
+        page_sections: pageSections,
       },
     })
     const url = typeof brief.url === 'string' ? brief.url : undefined

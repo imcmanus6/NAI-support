@@ -197,6 +197,10 @@ body {
 .repro-nudge strong { color: var(--text); }
 .ticket-confirmed { font-size: 13px; color: #16a34a; display: flex; align-items: center; gap: 6px; }
 
+/* Customer-facing root cause shown on a resolved ticket. */
+.resolution-card { margin: 10px 12px 0; padding: 10px 12px; border-radius: 10px; font-size: 13px; line-height: 1.45; color: var(--text); background: color-mix(in srgb, #16a34a 8%, var(--panel)); border: 1px solid color-mix(in srgb, #16a34a 30%, var(--border)); }
+.resolution-label { font-size: 11px; font-weight: 600; color: #16a34a; margin-bottom: 4px; }
+
 /* Deflection card — the auto-diagnosis suggesting a self-serve fix before filing. */
 .ticket-card.deflect { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); background: color-mix(in srgb, var(--accent) 6%, var(--panel)); }
 .ticket-card.deflect .ticket-label { color: var(--accent); }
