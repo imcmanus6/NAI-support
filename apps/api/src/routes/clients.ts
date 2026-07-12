@@ -32,6 +32,7 @@ const UpdateClientSchema = z.object({
   token_secret: z.string().optional(),            // only applied when non-empty
   briefly_api_url: z.string().optional(),
   briefly_api_key: z.string().optional(),          // only applied when non-empty
+  help_url: z.string().optional(),
   ticket_destination: z.enum(['briefly', 'jira']).optional(),
 })
 
@@ -53,6 +54,7 @@ function maskClient(c: ClientRow) {
     client_key: c.client_key,
     briefly_hub_id: c.briefly_hub_id,
     briefly_api_url: c.briefly_api_url,
+    help_url: c.help_url,
     ticket_destination: c.ticket_destination,
     has_token_secret: !!c.token_secret,
     has_briefly_api_key: !!c.briefly_api_key,
@@ -113,6 +115,7 @@ export async function clientsRoutes(fastify: FastifyInstance) {
     if (p.name !== undefined) patch.name = p.name
     if (p.client_key !== undefined) patch.client_key = p.client_key || null
     if (p.briefly_api_url !== undefined) patch.briefly_api_url = p.briefly_api_url || null
+    if (p.help_url !== undefined) patch.help_url = p.help_url || null
     if (p.ticket_destination !== undefined) patch.ticket_destination = p.ticket_destination
     if (p.token_secret) patch.token_secret = p.token_secret          // non-empty only
     if (p.briefly_api_key) patch.briefly_api_key = p.briefly_api_key  // non-empty only

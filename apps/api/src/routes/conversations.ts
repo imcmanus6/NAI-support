@@ -66,6 +66,14 @@ async function findVisibleTicket(ticketId: string, clientId: string, customerId:
 }
 
 export async function conversationsRoutes(fastify: FastifyInstance) {
+  // Display config for the widget (help-center link, etc.) — scoped to the customer's client.
+  fastify.get('/config', async (request, reply) => {
+    const identity = await resolveCustomer(request)
+    const [client] = await db.select({ help_url: clients.help_url }).from(clients).where(eq(clients.id, identity.clientId)).limit(1)
+    if (!client) { reply.status(404); return { error: 'Client not found' } }
+    return { data: { help_url: client.help_url ?? null } }
+  })
+
   fastify.post('/chat', async (request, reply) => {
     const identity = await resolveCustomer(request)   // throws 401 on bad token
     const parsed = ChatSchema.safeParse(request.body)

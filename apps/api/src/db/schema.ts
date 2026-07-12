@@ -35,6 +35,8 @@ export const clients = pgTable('clients', {
   briefly_hub_id:  text('briefly_hub_id'),
   briefly_api_url: text('briefly_api_url'),
   briefly_api_key: text('briefly_api_key'),
+  // Public help-center link shown in the widget ("Browse the Help Center").
+  help_url:        text('help_url'),
   // Where tickets for this client are filed.
   ticket_destination: ticketDestinationEnum('ticket_destination').notNull().default('briefly'),
   created_at:      timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

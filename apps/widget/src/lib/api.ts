@@ -111,6 +111,16 @@ function demoReply(message: string): ChatResponse {
   }
 }
 
+export interface WidgetConfig { help_url: string | null }
+
+export async function getConfig(): Promise<WidgetConfig> {
+  // Demo points at Briefly's real Help Center so the link is visible without a backend.
+  if (DEMO) { await delay(150); return { help_url: 'https://app.brief-ly.com/projects/930d5fc2-36aa-4328-bd3d-e752b51629b3' } }
+  const res = await fetch(url('/api/config'), { headers: authHeaders() })
+  if (!res.ok) return { help_url: null }
+  return (await res.json() as { data: WidgetConfig }).data
+}
+
 export async function sendMessage(message: string, _conversationId?: string): Promise<ChatResponse> {
   if (DEMO) { await delay(600); return demoReply(message) }
   const res = await fetch(url('/api/chat'), {

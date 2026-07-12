@@ -15,6 +15,8 @@ import { clients, clientSpaces, softwareDbConnections } from './schema.js'
 
 const CLIENT_NAME = 'Briefly'
 const BRIEFLY_HUB_ID = '03d431f7-aec9-4686-bb75-74b6b0448d10'
+// The public Help Center space, shown as a "Browse the Help Center" link in the widget.
+const HELP_URL = process.env.HELP_URL ?? 'https://app.brief-ly.com/projects/930d5fc2-36aa-4328-bd3d-e752b51629b3'
 
 // The three knowledge/ticket spaces created in the Briefly hub.
 const MAPPING: { briefly_space_id: string; role: 'help' | 'internal' | 'tickets'; label: string }[] = [
@@ -33,12 +35,13 @@ async function main() {
       name: CLIENT_NAME,
       client_key: 'briefly',
       briefly_hub_id: BRIEFLY_HUB_ID,
+      help_url: HELP_URL,
       ticket_destination: 'briefly',
     }).returning()
     console.log(`✅ created client "${CLIENT_NAME}" (${client.id})`)
   } else {
     await db.update(clients)
-      .set({ client_key: 'briefly', briefly_hub_id: BRIEFLY_HUB_ID, ticket_destination: 'briefly', updated_at: new Date() })
+      .set({ client_key: 'briefly', briefly_hub_id: BRIEFLY_HUB_ID, help_url: HELP_URL, ticket_destination: 'briefly', updated_at: new Date() })
       .where(eq(clients.id, client.id))
     console.log(`• client "${CLIENT_NAME}" exists (${client.id}) — refreshed`)
   }

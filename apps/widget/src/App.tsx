@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import {
-  sendMessage, confirmTicket, listTickets, getTicketComments, postTicketComment,
+  sendMessage, confirmTicket, listTickets, getTicketComments, postTicketComment, getConfig,
   clientContext, shortBrowser, DEMO,
   type ProposedTicket, type Attachment, type Ticket, type TicketComment,
 } from './lib/api'
@@ -53,7 +53,10 @@ export function App() {
   const [commentsLoading, setCommentsLoading] = useState(false)
   const [reply, setReply] = useState('')
   const [replySending, setReplySending] = useState(false)
+  const [helpUrl, setHelpUrl] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => { getConfig().then(c => setHelpUrl(c.help_url)).catch(() => {}) }, [])
   const fileFor = useRef<string | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
 
@@ -247,6 +250,9 @@ export function App() {
             {SUGGESTIONS.map(s => (
               <button key={s} className="chip" onClick={() => void submit(s)}>{s}</button>
             ))}
+            {helpUrl && (
+              <a className="chip help-chip" href={helpUrl} target="_blank" rel="noopener noreferrer">📚 Browse the Help Center →</a>
+            )}
           </div>
         )}
 

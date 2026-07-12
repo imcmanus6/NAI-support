@@ -220,3 +220,5 @@ body {
   border: 1px solid var(--border); background: var(--panel); color: var(--text-2); cursor: pointer;
 }
 .chip:hover { color: var(--text); border-color: var(--accent); }
+.help-chip { text-decoration: none; color: var(--accent); border-color: var(--accent); }
+.help-chip:hover { background: var(--agent-bubble); }

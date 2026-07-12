@@ -7,6 +7,7 @@ export interface Client {
   client_key: string | null
   briefly_hub_id: string | null
   briefly_api_url: string | null
+  help_url: string | null
   ticket_destination: TicketDestination
   has_token_secret: boolean
   has_briefly_api_key: boolean
@@ -56,6 +57,7 @@ export interface ClientPatch {
   token_secret?: string
   briefly_api_url?: string
   briefly_api_key?: string
+  help_url?: string
   ticket_destination?: TicketDestination
 }
 export const updateClient = (id: string, patch: ClientPatch) =>

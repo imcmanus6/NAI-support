@@ -43,6 +43,7 @@ export function ClientsPage() {
   const [brieflyUrl, setBrieflyUrl] = useState('')
   const [brieflyKey, setBrieflyKey] = useState('')
   const [tokenSecret, setTokenSecret] = useState('')
+  const [helpUrl, setHelpUrl] = useState('')
 
   // Spaces
   const [spaces, setSpaces] = useState<BrieflySpace[]>([])
@@ -58,7 +59,7 @@ export function ClientsPage() {
     setSelected(c); setMsg(''); setSpacesError(''); setBrieflyKey(''); setTokenSecret('')
     const fresh = await getClient(c.id).catch(() => c)
     setName(fresh.name); setClientKey(fresh.client_key ?? ''); setTicketDest(fresh.ticket_destination)
-    setBrieflyUrl(fresh.briefly_api_url ?? '')
+    setBrieflyUrl(fresh.briefly_api_url ?? ''); setHelpUrl(fresh.help_url ?? '')
 
     getClientSpaces(c.id).then(rows => {
       const next: Record<string, Role> = {}
@@ -83,7 +84,7 @@ export function ClientsPage() {
     try {
       const updated = await updateClient(selected.id, {
         name, client_key: clientKey, ticket_destination: ticketDest,
-        briefly_api_url: brieflyUrl,
+        briefly_api_url: brieflyUrl, help_url: helpUrl,
         ...(brieflyKey ? { briefly_api_key: brieflyKey } : {}),
         ...(tokenSecret ? { token_secret: tokenSecret } : {}),
       })
@@ -149,6 +150,8 @@ export function ClientsPage() {
             </select>
             <label style={label}>Briefly API URL <span style={{ textTransform: 'none' }}>(blank = env default)</span></label>
             <input style={input} value={brieflyUrl} onChange={e => setBrieflyUrl(e.target.value)} placeholder="http://localhost:3001" />
+            <label style={label}>Help Center URL <span style={{ textTransform: 'none' }}>(shown in the widget)</span></label>
+            <input style={input} value={helpUrl} onChange={e => setHelpUrl(e.target.value)} placeholder="https://app.brief-ly.com/projects/…" />
             <label style={label}>Briefly API key</label>
             <input style={input} type="password" value={brieflyKey} onChange={e => setBrieflyKey(e.target.value)}
               placeholder={selected.has_briefly_api_key ? 'set — leave blank to keep' : 'not set (uses env)'} />
