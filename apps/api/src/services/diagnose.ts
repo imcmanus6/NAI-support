@@ -26,6 +26,7 @@ export interface DiagnoseInput {
   transcript: string
   diagnostics?: Diagnostics
   internalContext?: string
+  permissions?: string       // the customer's actual roles/entitlements (JSON)
   url?: string
 }
 
@@ -35,6 +36,14 @@ requests), and any internal engineering notes, produce a concise root-cause diag
 
 Guidance:
 - If a network request failed (4xx/5xx), that is almost always the cause — name the request.
+- PERMISSIONS: if the customer's roles/entitlements (provided below) don't include what they
+  were trying to do, this is NOT a bug — it's a permissions gap. Use category "question",
+  say which role/grant is missing, and set customer_resolvable true only if they can request
+  access themselves (otherwise a human/admin must grant it).
+- CAN'T PIN IT DOWN: if the evidence doesn't reveal a clear cause (nothing failed, no error),
+  the best first step is almost always to clear the browser cache and hard-reload, then retry.
+  Make that step 1, set customer_resolvable true, and note that if it recurs we need a screen
+  recording or screenshot of it happening — a reproduction is what unblocks the engineers.
 - category: "bug" (something broken), "feature_request", "question", or "how_to".
 - severity: "high" (broken / blocking / data loss), "medium", or "low".
 - customer_resolvable: true ONLY if the customer can fix it themselves via the steps.
@@ -53,6 +62,7 @@ export async function diagnose(input: DiagnoseInput): Promise<Diagnosis | null> 
     input.url ? `Page: ${input.url}` : '',
     `\nConversation:\n${input.transcript || '(none)'}`,
     input.diagnostics ? formatDiagnosticsBlock(input.diagnostics) : '',
+    input.permissions ? `\n\nCustomer's roles/entitlements:\n${input.permissions}` : '',
     input.internalContext ? `\n\nInternal notes:\n${input.internalContext}` : '',
   ].filter(Boolean).join('\n')
 

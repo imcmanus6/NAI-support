@@ -45,6 +45,7 @@ export function App() {
   const [items, setItems] = useState<ChatItem[]>([GREETING])
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
+  const [status, setStatus] = useState<string | null>(null)   // live "Checking…" progress
   const [conversationId, setConversationId] = useState<string | undefined>()
   const [attachments, setAttachments] = useState<Record<string, Attachment>>({})
   const [recordings, setRecordings] = useState<Record<string, string>>({})  // itemId → recordingId
@@ -112,8 +113,9 @@ export function App() {
     setInput('')
     setItems(prev => [...prev, { id: `c-${prev.length}`, role: 'customer', content: trimmed }])
     setBusy(true)
+    setStatus('Looking into it…')
     try {
-      const res = await sendMessage(trimmed, conversationId)
+      const res = await sendMessage(trimmed, conversationId, setStatus)
       setConversationId(res.conversation_id)
       setItems(prev => [...prev, {
         id: `a-${prev.length}`,
@@ -126,6 +128,7 @@ export function App() {
       setItems(prev => [...prev, { id: `e-${prev.length}`, role: 'agent', content: `Something went wrong: ${String(e)}` }])
     } finally {
       setBusy(false)
+      setStatus(null)
     }
   }
 
@@ -276,18 +279,27 @@ export function App() {
                         <span className="ctx-key">Automatically included</span>
                         <span>{contextSummary()} · your IP &amp; location</span>
                         {attachments[item.id] && <span className="attach-chip">📎 {attachments[item.id].name}</span>}
+                        {recordings[item.id] && <span className="attach-chip">🎥 Reproduction attached</span>}
                       </div>
 
+                      {!recordings[item.id] && (
+                        <div className="repro-nudge">
+                          <strong>Help us fix this faster.</strong> A {embedded ? '10-second screen recording' : 'screenshot'} of
+                          the problem is the single most useful thing for our engineers. Can’t make it happen again?
+                          Clear your browser cache and hard-reload, then try once more.
+                        </div>
+                      )}
+
                       <div className="ticket-actions">
-                        <button className="btn primary" onClick={() => void onConfirmTicket(item.id, item.ticket!)}>Raise ticket</button>
                         {embedded && (
-                          <button className="btn" onClick={() => startRecording(item.id)}>
-                            {recordings[item.id] ? '🎥 Recording attached' : '📹 Record & reproduce'}
+                          <button className={`btn${recordings[item.id] ? '' : ' accent'}`} onClick={() => startRecording(item.id)}>
+                            {recordings[item.id] ? '🎥 Recording attached' : '📹 Record a reproduction'}
                           </button>
                         )}
-                        <button className="btn" onClick={() => pickAttachment(item.id)}>
-                          {attachments[item.id] ? 'Change screenshot' : 'Add screenshot'}
+                        <button className={`btn${!embedded && !attachments[item.id] ? ' accent' : ''}`} onClick={() => pickAttachment(item.id)}>
+                          {attachments[item.id] ? 'Change screenshot' : '📷 Add a screenshot'}
                         </button>
+                        <button className="btn primary" onClick={() => void onConfirmTicket(item.id, item.ticket!)}>Raise ticket</button>
                         <button className="btn" onClick={() => onDismissTicket(item.id)}>Not now</button>
                       </div>
                     </div>
@@ -298,7 +310,11 @@ export function App() {
           ))}
           {busy && (
             <div className="row agent">
-              <div className="bubble agent"><div className="typing"><span /><span /><span /></div></div>
+              <div className="bubble agent">
+                {status
+                  ? <div className="status-step"><span className="status-spinner" />{status}</div>
+                  : <div className="typing"><span /><span /><span /></div>}
+              </div>
             </div>
           )}
         </div>

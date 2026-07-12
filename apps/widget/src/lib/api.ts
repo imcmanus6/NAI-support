@@ -121,14 +121,44 @@ export async function getConfig(): Promise<WidgetConfig> {
   return (await res.json() as { data: WidgetConfig }).data
 }
 
-export async function sendMessage(message: string, _conversationId?: string): Promise<ChatResponse> {
-  if (DEMO) { await delay(600); return demoReply(message) }
+export async function sendMessage(
+  message: string,
+  _conversationId?: string,
+  onStep?: (label: string) => void,   // live progress: "Checking your permissions…"
+): Promise<ChatResponse> {
+  if (DEMO) {
+    // Mirror the streamed steps so the demo shows the same "working…" experience.
+    for (const s of ['Searching help articles…', 'Checking your account…']) { await delay(450); onStep?.(s) }
+    await delay(400); return demoReply(message)
+  }
   const res = await fetch(url('/api/chat'), {
     method: 'POST', headers: authHeaders(),
     body: JSON.stringify({ message, context: clientContext() }),
   })
-  if (!res.ok) throw new Error(`${res.status} ${await res.text()}`)
-  return (await res.json() as { data: ChatResponse }).data
+  if (!res.ok || !res.body) throw new Error(`${res.status} ${res.body ? await res.text() : 'no response body'}`)
+
+  // The server streams NDJSON: {type:'step',label} lines, then one {type:'result',data}.
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buf = ''
+  let result: ChatResponse | undefined
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buf += decoder.decode(value, { stream: true })
+    let nl: number
+    while ((nl = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, nl).trim()
+      buf = buf.slice(nl + 1)
+      if (!line) continue
+      const evt = JSON.parse(line) as { type: string; label?: string; data?: ChatResponse; error?: string }
+      if (evt.type === 'step' && evt.label) onStep?.(evt.label)
+      else if (evt.type === 'result' && evt.data) result = evt.data
+      else if (evt.type === 'error') throw new Error(evt.error || 'Server error')
+    }
+  }
+  if (!result) throw new Error('The assistant did not return a response.')
+  return result
 }
 
 /** Ask the host page (parent window) for its captured console/network/error buffers. */

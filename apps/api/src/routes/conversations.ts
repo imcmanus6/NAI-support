@@ -17,6 +17,7 @@ import { buildTicketContext, type ClientContext } from '../lib/requestContext.js
 import { searchSpaces } from '../services/knowledge.js'
 import { brieflyClientFor } from '../lib/brieflyClient.js'
 import { diagnose } from '../services/diagnose.js'
+import { getReaderForClient } from '../services/softwareDb.js'
 import { resolveTicketScope, emailDomain, type TicketScope } from '../services/ticketVisibility.js'
 
 const ClientContextSchema = z.object({
@@ -63,6 +64,21 @@ const ReplySchema = z.object({ body: z.string().min(1).max(4000) })
 // (and pick out the viewer's own as "You").
 const CUSTOMER_PREFIX_RE = /^\[Customer(?::([^\]]*))?\]\s?/
 function customerPrefix(email?: string): string { return `[Customer:${email ?? 'customer'}] ` }
+
+/** This customer's own recent tickets (title + status) — for the agent's dedup check. */
+async function recentTicketsFor(clientId: string, customerId: string) {
+  const rows = await db.select({
+    title: tickets.title, status: tickets.status, created_at: tickets.created_at,
+  }).from(tickets)
+    .innerJoin(conversations, eq(tickets.conversation_id, conversations.id))
+    .where(and(
+      eq(conversations.client_id, clientId),
+      eq(conversations.external_customer_id, customerId),
+    ))
+    .orderBy(desc(tickets.created_at))
+    .limit(5)
+  return rows.map(r => ({ title: r.title, status: r.status as string, created_at: String(r.created_at) }))
+}
 
 /** Load a ticket the customer is allowed to see: their own, or (org mode) their domain's. */
 async function findVisibleTicket(ticketId: string, clientId: string, customerId: string, scope: TicketScope) {
@@ -149,16 +165,40 @@ export async function conversationsRoutes(fastify: FastifyInstance) {
       helpSpaceIds: spaceRows.filter(s => s.role === 'help').map(s => s.briefly_space_id),
       // This client's own Briefly connection (per-tenant credentials).
       briefly: brieflyClientFor(client),
+      // The customer's own recent tickets — scoped server-side, for dedup.
+      getRecentTickets: () => recentTicketsFor(identity.clientId, identity.customerId),
     }
-    const result = await runAgentTurn(
-      ctx,
-      history.filter(m => m.role !== 'system').map(m => ({ role: m.role as 'customer' | 'agent', content: m.content })),
-      parsed.data.message,
-    )
 
-    await db.insert(messages).values({ conversation_id: conv.id, role: 'agent', content: result.reply })
+    // Stream progress as NDJSON so the customer sees the real checks as they happen
+    // ("Checking your permissions…"), then a final result line. Hijack the reply and
+    // write to the raw socket — everything above this point still errors as normal JSON.
+    reply.hijack()
+    const res = reply.raw
+    const origin = request.headers.origin
+    res.writeHead(200, {
+      'Content-Type': 'application/x-ndjson; charset=utf-8',
+      'Cache-Control': 'no-cache, no-transform',
+      'X-Accel-Buffering': 'no',                // don't let a proxy buffer the stream
+      ...(origin ? { 'Access-Control-Allow-Origin': origin, 'Vary': 'Origin' } : {}),
+    })
+    const send = (obj: unknown) => res.write(JSON.stringify(obj) + '\n')
+    send({ type: 'step', label: 'Looking into it…' })
 
-    return { data: { conversation_id: conv.id, reply: result.reply, proposed_ticket: result.proposedTicket ?? null } }
+    try {
+      const result = await runAgentTurn(
+        ctx,
+        history.filter(m => m.role !== 'system').map(m => ({ role: m.role as 'customer' | 'agent', content: m.content })),
+        parsed.data.message,
+        label => send({ type: 'step', label }),
+      )
+      await db.insert(messages).values({ conversation_id: conv.id, role: 'agent', content: result.reply })
+      send({ type: 'result', data: { conversation_id: conv.id, reply: result.reply, proposed_ticket: result.proposedTicket ?? null } })
+    } catch (err) {
+      request.log.error(err)
+      send({ type: 'error', error: 'The assistant hit a problem. Please try again.' })
+    } finally {
+      res.end()
+    }
   })
 
   // Gated ticket write: confirm a drafted ticket → create the Brief in Briefly.
@@ -206,6 +246,14 @@ export async function conversationsRoutes(fastify: FastifyInstance) {
       if (rec) recordingUrl = `${config.publicUrl}/replay/${parsed.data.recording_id}?t=${rec.token}`
     }
 
+    // The customer's actual roles/entitlements — so the diagnosis can tell a real bug
+    // apart from a permission the customer simply doesn't have. Best-effort, never blocks.
+    let permissions: string | undefined
+    try {
+      const access = await getReaderForClient(identity.clientId).then(r => r.getAccess(identity.customerId))
+      if (access.length) permissions = JSON.stringify(access)
+    } catch { /* degrade silently — diagnosis still runs without it */ }
+
     // AI auto-diagnosis — root cause + category/severity, attached to the ticket.
     const diagnosis = await diagnose({
       title: parsed.data.title,
@@ -213,6 +261,7 @@ export async function conversationsRoutes(fastify: FastifyInstance) {
       transcript,
       diagnostics: parsed.data.diagnostics,
       internalContext,
+      permissions,
       url: context.url,
     })
 

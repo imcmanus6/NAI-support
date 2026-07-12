@@ -22,6 +22,19 @@ export interface AgentContext {
   customerId: string                 // from the verified token — the scoping key
   helpSpaceIds: string[]             // PUBLIC help spaces only — safe to quote to customers
   briefly: BrieflyClient             // this client's Briefly connection (per-tenant)
+  // This customer's own recent support tickets — for dedup ("you already reported this")
+  // and context. Injected by the route (it owns our tickets schema); scoped server-side.
+  getRecentTickets?: () => Promise<Array<{ title: string; status: string; created_at: string }>>
+}
+
+/** User-facing progress labels for each tool, streamed while the customer waits. */
+const STEP_LABELS: Record<string, string> = {
+  search_knowledge: 'Searching help articles…',
+  get_customer_account: 'Checking your account…',
+  get_recent_orders: 'Checking your recent activity…',
+  get_customer_access: 'Checking your permissions…',
+  get_recent_tickets: 'Checking your recent tickets…',
+  create_ticket: 'Preparing a ticket…',
 }
 
 export interface ProposedTicket {
@@ -45,17 +58,28 @@ const SYSTEM_PROMPT = `You are a customer-support agent. Be concise, accurate, a
 ALWAYS TRY TO HELP FIRST. Before ever raising a ticket:
   1. Use search_knowledge to look for how-to and policy answers.
   2. Use get_customer_account / get_recent_orders to check THIS customer's own situation.
-  3. For "why can't I access / see / do X" questions, use get_customer_access to check the
-     customer's actual roles and entitlements — then explain what they have and what's missing.
-  4. Give the customer a real answer or next step based on what you found.
+  3. For "why can't I access / see / do X" questions, ALWAYS use get_customer_access to
+     check the customer's actual roles and entitlements FIRST — a great many "it's broken"
+     reports are really a missing permission. If they lack the role, this is NOT a bug:
+     explain what they have, what's missing, and who can grant it. Don't file a bug ticket.
+  4. Use get_recent_tickets to see if they already reported this. If there's a similar open
+     ticket, tell them it's already being worked on (with its title/status) instead of
+     filing a duplicate.
+  5. Give the customer a real answer or next step based on what you found.
 
-Only AFTER you've genuinely tried and cannot resolve it yourself — a bug, a refund/
+Only AFTER you've genuinely tried and cannot resolve it yourself — a real bug, a refund/
 exception, or something needing account changes a human must make — OFFER to raise a
 ticket. Briefly explain why it needs a human, then call create_ticket. Calling
 create_ticket presents the customer with a "Raise ticket / Not now" choice, so phrase
 your message as an offer, not a promise that it's already done.
 
-Never raise (or offer) a ticket for something you can answer yourself.
+When the issue looks like a BUG, ask the customer to capture a short screen recording or a
+screenshot of it happening — a reproduction is the single most useful thing for the
+engineers. If they can't make it happen again, suggest clearing their browser cache and
+doing a hard reload, then trying once more before you file.
+
+Never raise (or offer) a ticket for something you can answer yourself, a permission the
+customer simply lacks, or something a teammate is already handling.
 
 Rules:
 - You only ever see the current customer's data. Never claim to access other customers.
@@ -106,6 +130,14 @@ const TOOL_DEFS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
   {
     type: 'function',
     function: {
+      name: 'get_recent_tickets',
+      description: "Get the CURRENT customer's own recent support tickets (title + status). Use this before raising a new ticket to avoid filing a duplicate of something already being handled. Scoped to the signed-in customer.",
+      parameters: { type: 'object', properties: {} },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'create_ticket',
       description: 'Offer to raise a ticket for a human teammate. Call ONLY after you have used the other tools to try to help and genuinely cannot resolve the issue yourself. This presents the customer with a Raise/Not-now choice.',
       parameters: {
@@ -137,6 +169,7 @@ export async function runAgentTurn(
   ctx: AgentContext,
   history: { role: 'customer' | 'agent'; content: string }[],
   latestMessage: string,
+  onStep?: (label: string) => void,   // streamed progress: "Checking your permissions…"
 ): Promise<AgentTurnResult> {
   const reader: SoftwareDbReader = await getReaderForClient(ctx.clientId)
   let proposedTicket: ProposedTicket | undefined
@@ -154,6 +187,8 @@ export async function runAgentTurn(
         return JSON.stringify(await reader.getRecentOrders(ctx.customerId, Number(args.limit) || 10))
       case 'get_customer_access':
         return JSON.stringify(await reader.getAccess(ctx.customerId))
+      case 'get_recent_tickets':
+        return JSON.stringify(ctx.getRecentTickets ? await ctx.getRecentTickets() : [])
       case 'create_ticket': {
         proposedTicket = {
           title: String(args.title ?? 'Support request'),
@@ -185,7 +220,7 @@ export async function runAgentTurn(
     { role: 'user', content: latestMessage },
   ]
 
-  const reply = await runToolLoop(openai, messages, execTool)
+  const reply = await runToolLoop(openai, messages, execTool, MAX_TOOL_ITERATIONS, onStep)
   return { reply, proposedTicket }
 }
 
@@ -202,6 +237,7 @@ export async function runToolLoop(
   messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[],
   execTool: (name: string, args: Record<string, unknown>) => Promise<string>,
   maxIterations = MAX_TOOL_ITERATIONS,
+  onStep?: (label: string) => void,
 ): Promise<string> {
   for (let i = 0; i < maxIterations; i++) {
     const completion = await openai.chat.completions.create({
@@ -219,6 +255,7 @@ export async function runToolLoop(
 
     // Execute each requested tool and feed results back for the next round.
     for (const call of toolCalls) {
+      onStep?.(STEP_LABELS[call.function.name] ?? 'Working on it…')  // surface the real step
       let args: Record<string, unknown> = {}
       try { args = JSON.parse(call.function.arguments || '{}') } catch { /* tolerate bad JSON */ }
       const result = await execTool(call.function.name, args)

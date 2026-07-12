@@ -183,7 +183,18 @@ body {
   border: 1px solid var(--border); background: var(--panel); color: var(--text); cursor: pointer;
 }
 .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+/* Emphasised-but-secondary: draws the eye to capturing a repro without stealing "Raise ticket". */
+.btn.accent { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--panel)); font-weight: 600; }
 .btn:disabled { opacity: .55; cursor: default; }
+
+/* Live agent progress ("Checking your permissions…") shown while a turn runs. */
+.status-step { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-2); }
+.status-spinner { width: 13px; height: 13px; border-radius: 50%; border: 2px solid color-mix(in srgb, var(--accent) 30%, transparent); border-top-color: var(--accent); animation: nai-spin .7s linear infinite; flex: none; }
+@keyframes nai-spin { to { transform: rotate(360deg); } }
+
+/* Push to capture a reproduction / screenshot before filing a bug. */
+.repro-nudge { font-size: 12.5px; line-height: 1.45; color: var(--text-2); background: color-mix(in srgb, var(--accent) 7%, var(--bg)); border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border)); border-radius: 9px; padding: 9px 11px; margin-bottom: 12px; }
+.repro-nudge strong { color: var(--text); }
 .ticket-confirmed { font-size: 13px; color: #16a34a; display: flex; align-items: center; gap: 6px; }
 
 /* Deflection card — the auto-diagnosis suggesting a self-serve fix before filing. */
