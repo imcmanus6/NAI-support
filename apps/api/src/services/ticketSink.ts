@@ -105,7 +105,7 @@ class BrieflyTicketSink implements TicketSink {
       space_id: target.briefly_space_id,
       // Lead the Brief title with the ticket number so it's referenceable everywhere.
       title: draft.number ? `#${draft.number} ${draft.title}` : draft.title,
-      brief_type: 'action',
+      brief_type: 'ticket',
       description,
       properties: {
         conversation_id: draft.conversationId,

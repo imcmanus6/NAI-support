@@ -41,7 +41,7 @@ export interface BriefFeedPage {
 export interface CreateBriefInput {
   space_id: string
   title: string
-  brief_type?: 'action' | 'document' | 'report' | 'decision' | 'meeting' | 'custom'
+  brief_type?: 'action' | 'document' | 'report' | 'decision' | 'meeting' | 'custom' | 'ticket'
   description?: string
   priority?: 'urgent_important' | 'today' | 'important_not_urgent' | 'low_priority' | 'delegated'
   content?: Record<string, unknown>
