@@ -27,6 +27,7 @@ export interface TicketDraft {
   diagnostics?: Diagnostics      // host-page console/network/errors captured around the issue
   recordingUrl?: string          // link to an rrweb reproduction replay
   diagnosis?: Diagnosis          // AI root-cause analysis
+  number?: number                // human-friendly ticket number (#1024)
 }
 
 export interface TicketResult {
@@ -73,6 +74,7 @@ class BrieflyTicketSink implements TicketSink {
     // context and recording — and can fill the resolution fields (which start unset).
     const custom: Record<string, unknown> = {
       source: 'support-ai',
+      ticket_number: draft.number ?? null,
       reporter: reporter || null,
       customer_email: draft.customerEmail ?? null,
       issue: draft.description,
@@ -101,7 +103,8 @@ class BrieflyTicketSink implements TicketSink {
 
     const brief = await this.briefly.createBrief({
       space_id: target.briefly_space_id,
-      title: draft.title,
+      // Lead the Brief title with the ticket number so it's referenceable everywhere.
+      title: draft.number ? `#${draft.number} ${draft.title}` : draft.title,
       brief_type: 'action',
       description,
       properties: {

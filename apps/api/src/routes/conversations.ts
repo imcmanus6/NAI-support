@@ -4,7 +4,7 @@
  * — the agent's tools inherit that scope and cannot widen it.
  */
 import type { FastifyInstance } from 'fastify'
-import { and, eq, asc, desc } from 'drizzle-orm'
+import { and, eq, asc, desc, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { randomBytes } from 'node:crypto'
 import { db } from '../db/client.js'
@@ -70,6 +70,7 @@ const ReplySchema = z.object({ body: z.string().min(1).max(4000) })
 // author's email, so a shared org thread can attribute each customer comment
 // (and pick out the viewer's own as "You").
 const CUSTOMER_PREFIX_RE = /^\[Customer(?::([^\]]*))?\]\s?/
+const INTERNAL_PREFIX_RE = /^\[Internal\]\s?/   // team-only ticket notes; never surfaced to the customer
 function customerPrefix(email?: string): string { return `[Customer:${email ?? 'customer'}] ` }
 
 /** This customer's own recent tickets (title + status) — for the agent's dedup check. */
@@ -309,10 +310,15 @@ export async function conversationsRoutes(fastify: FastifyInstance) {
       return { data: { deflected: true, diagnosis: { summary: diagnosis.summary, cause: diagnosis.cause, steps: diagnosis.steps } } }
     }
 
+    // Allocate a human-friendly ticket number (#1024) up front so it can lead the title.
+    const numRes = await db.execute(sql`SELECT nextval('ticket_number_seq')::int AS n`)
+    const ticketNumber = Number((numRes as unknown as { n: number }[])[0]?.n) || null
+
     try {
       const result = await sink.createTicket({
         title: parsed.data.title,
         description: parsed.data.description,
+        number: ticketNumber ?? undefined,
         clientId: identity.clientId,
         conversationId: conv.id,
         customerId: identity.customerId,
@@ -327,6 +333,7 @@ export async function conversationsRoutes(fastify: FastifyInstance) {
       })
       const [row] = await db.insert(tickets).values({
         conversation_id: conv.id,
+        number: ticketNumber,
         destination: result.destination,
         external_id: result.externalId,
         url: result.url ?? null,
@@ -396,7 +403,7 @@ export async function conversationsRoutes(fastify: FastifyInstance) {
       : eq(conversations.external_customer_id, identity.customerId)
 
     const rows = await db.select({
-      id: tickets.id, title: tickets.title, status: tickets.status,
+      id: tickets.id, number: tickets.number, title: tickets.title, status: tickets.status,
       external_id: tickets.external_id, url: tickets.url, created_at: tickets.created_at,
       reporter: conversations.customer_email,
     }).from(tickets)
@@ -422,7 +429,9 @@ export async function conversationsRoutes(fastify: FastifyInstance) {
           if (summary) resolution = summary   // set by the reviewer in Briefly
         } catch { /* keep stored values */ }
       }
-      return { id: t.id, title, status, url: t.url, created_at: t.created_at, updated_at, reporter: t.reporter ?? null, resolution }
+      // Brief title carries the "#N " prefix — strip it; the number is returned separately.
+      const cleanTitle = t.number ? title.replace(new RegExp(`^#${t.number}\\s+`), '') : title
+      return { id: t.id, number: t.number ?? null, title: cleanTitle, status, url: t.url, created_at: t.created_at, updated_at, reporter: t.reporter ?? null, resolution }
     }))
     return { data, shared: scope.mode === 'org' }
   })
@@ -439,7 +448,10 @@ export async function conversationsRoutes(fastify: FastifyInstance) {
     if (!client) { reply.status(404); return { error: 'Client not found' } }
 
     const rows = await brieflyClientFor(client).listComments(ticket.external_id)
-    const data = rows.map(c => {
+    const data = rows
+      // Internal team notes ([Internal] prefix) are NEVER shown to the customer.
+      .filter(c => !INTERNAL_PREFIX_RE.test(c.body))
+      .map(c => {
       const m = CUSTOMER_PREFIX_RE.exec(c.body)
       if (!m) return { id: c.id, from: 'support', author: c.author, body: c.body, created_at: c.created_at }
       const authorEmail = m[1] || ''

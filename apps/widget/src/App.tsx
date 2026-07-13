@@ -200,7 +200,9 @@ export function App() {
             <div className="ticket-detail">
               <button className="back-btn" onClick={() => setOpenTicket(null)}>← All tickets</button>
               <div className="detail-head">
-                <span className="ticket-row-title">{openTicket.title}</span>
+                <span className="ticket-row-title">
+                  {openTicket.number ? <span className="ticket-num">#{openTicket.number}</span> : null} {openTicket.title}
+                </span>
                 <span className="status-badge" style={{ color: statusColor(openTicket.status), borderColor: statusColor(openTicket.status) + '55' }}>
                   {prettyStatus(openTicket.status)}
                 </span>
@@ -239,7 +241,9 @@ export function App() {
               {tickets.map(t => (
                 <button key={t.id} className="ticket-row" onClick={() => openTicketDetail(t)}>
                   <div className="ticket-row-main">
-                    <span className="ticket-row-title">{t.title}</span>
+                    <span className="ticket-row-title">
+                      {t.number ? <span className="ticket-num">#{t.number}</span> : null} {t.title}
+                    </span>
                     <span className="ticket-row-date">
                       {t.reporter ? `${t.reporter} · ` : ''}
                       {t.updated_at ? `Updated ${new Date(t.updated_at).toLocaleDateString()}` : new Date(t.created_at).toLocaleDateString()}

@@ -265,6 +265,7 @@ export async function resolveConversation(conversationId: string): Promise<void>
 
 export interface Ticket {
   id: string
+  number?: number | null        // human-friendly ticket number (#1024)
   title: string
   status: string
   url: string | null

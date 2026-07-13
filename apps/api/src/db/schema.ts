@@ -6,7 +6,7 @@
  * Briefly data is never copied here wholesale — it's read on demand via the
  * BrieflyClient (/api/v1). Only references (space ids, brief ids) are persisted.
  */
-import { pgTable, uuid, text, timestamp, jsonb, pgEnum, boolean, unique } from 'drizzle-orm/pg-core'
+import { pgTable, uuid, text, timestamp, jsonb, pgEnum, boolean, unique, integer } from 'drizzle-orm/pg-core'
 
 // How the agent may use a mapped space:
 //   help     — public knowledge the agent may quote to customers
@@ -124,6 +124,7 @@ export const recordings = pgTable('recordings', {
 // ── Tickets: briefs created back in Briefly (or, later, Jira) ─────────────────
 export const tickets = pgTable('tickets', {
   id:              uuid('id').primaryKey().defaultRandom(),
+  number:          integer('number'),                      // human-friendly ticket # (from ticket_number_seq)
   conversation_id: uuid('conversation_id').notNull().references(() => conversations.id, { onDelete: 'cascade' }),
   recording_id:    uuid('recording_id'),                   // optional rrweb replay
   destination:     ticketDestinationEnum('destination').notNull().default('briefly'),
