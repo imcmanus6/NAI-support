@@ -15,6 +15,7 @@ import type OpenAI from 'openai'
 import { getOpenAI, AGENT_MODEL } from '../lib/openaiClient.js'
 import { getReaderForClient, type SoftwareDbReader } from './softwareDb.js'
 import { searchSpaces } from './knowledge.js'
+import { searchBrieflyContext } from '../lib/brieflyContext.js'
 import { formatDiagnosticsBlock, type Diagnostics } from '../lib/requestContext.js'
 import type { BrieflyClient } from '../lib/brieflyClient.js'
 
@@ -215,7 +216,11 @@ export async function runAgentTurn(
   async function execTool(name: string, args: Record<string, unknown>): Promise<string> {
     switch (name) {
       case 'search_knowledge': {
-        const results = await searchSpaces(ctx.briefly, ctx.helpSpaceIds, String(args.query ?? ''))
+        const q = String(args.query ?? '')
+        // Direction B: prefer Briefly's Context Engine (ranked + rule-filtered, scoped
+        // by a Context Pack); fall back to local embedding search if unconfigured/errors.
+        const engine = await searchBrieflyContext(q)
+        const results = engine.length ? engine : await searchSpaces(ctx.briefly, ctx.helpSpaceIds, q)
         return JSON.stringify(results.length ? results : ['No matching articles found.'])
       }
       case 'get_customer_account':

@@ -16,7 +16,15 @@ export const config = {
     apiKey: process.env.BRIEFLY_API_KEY ?? '',
   },
   openaiApiKey: process.env.OPENAI_API_KEY ?? '',
-  adminToken: process.env.ADMIN_TOKEN ?? '',   // gate for the operator admin API
+  adminToken: process.env.ADMIN_TOKEN ?? '',   // gate for the operator admin API + MCP endpoint
+  // Which client the MCP server (Blink tools-in) is scoped to; blank = the only/oldest client.
+  mcpClientId: process.env.MCP_CLIENT_ID ?? '',
+  // Direction B — pull Briefly's Context Engine (search_context) over MCP with a
+  // pack-scoped key. Blank = fall back to local embedding search over help spaces.
+  brieflyMcp: {
+    url: process.env.BRIEFLY_MCP_URL ?? '',
+    key: process.env.BRIEFLY_MCP_KEY ?? '',
+  },
   publicUrl: process.env.NAI_PUBLIC_URL ?? 'http://localhost:4000',  // for replay links
   customerToken: {
     issuer: process.env.CUSTOMER_TOKEN_ISSUER ?? '',
