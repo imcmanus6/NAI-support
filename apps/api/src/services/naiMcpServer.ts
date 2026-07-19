@@ -90,10 +90,12 @@ export function buildSupportMcpServer(client: ClientRow): McpServer {
       inputSchema: { query: z.string().min(1).describe('What to look up in the help KB.') },
     },
     async ({ query }) => {
+      // Public help spaces only — same scope the agent quotes to customers; never
+      // internal docs or ticket briefs.
       const spaceRows = await db.select({ sid: clientSpaces.briefly_space_id })
-        .from(clientSpaces).where(eq(clientSpaces.client_id, client.id))
+        .from(clientSpaces).where(and(eq(clientSpaces.client_id, client.id), eq(clientSpaces.role, 'help')))
       const spaceIds = spaceRows.map(r => r.sid)
-      if (!spaceIds.length) return text('No help spaces are configured for this client.')
+      if (!spaceIds.length) return text('No public help spaces are configured for this client.')
       const results = await searchSpaces(brieflyClientFor(client), spaceIds, query)
       return text(results.length ? results.join('\n\n---\n\n') : 'No matching help articles found.')
     },
