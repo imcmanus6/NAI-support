@@ -7,7 +7,7 @@
     "dev": "vite --port 4002 --strictPort",
     "build": "vite build",
     "preview": "vite preview",
-    "start": "serve -s dist",
+    "start": "serve -s dist -l tcp://0.0.0.0:${PORT:-3000}",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
