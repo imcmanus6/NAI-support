@@ -15,9 +15,17 @@
   if (window.__NAI_LOADED__) return
   window.__NAI_LOADED__ = true
 
-  var script = document.currentScript || (function () {
-    var s = document.getElementsByTagName('script'); return s[s.length - 1]
-  })()
+  // Find our own <script>. document.currentScript is null for dynamically-inserted
+  // scripts (how hosts like Briefly load us via appendChild), so fall back to the
+  // known id, then to the last script whose src actually points at this loader —
+  // never a random inline script (whose empty src would throw on new URL()).
+  var script = document.currentScript
+    || document.getElementById('nai-loader')
+    || (function () {
+         var all = document.querySelectorAll('script[src]')
+         for (var i = all.length - 1; i >= 0; i--) { if (/\/loader\.js(\?|$)/.test(all[i].src)) return all[i] }
+         return all[all.length - 1]
+       })()
   var origin = new URL(script.src).origin
   var tokenUrl = script.getAttribute('data-token-url')
   var accent = script.getAttribute('data-accent') || '#4f46e5'
