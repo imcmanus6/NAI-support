@@ -1,0 +1,14 @@
+# Force a Node runtime that serves the built widget with `serve` on $PORT, instead
+# of Nixpacks' static/Caddy provider (whose port Railway's edge wasn't routing to,
+# causing an external 502 despite a passing internal healthcheck). A Node app on
+# $PORT is the same shape as the api service, which Railway routes correctly.
+providers = ["node"]
+
+[phases.install]
+cmds = ["npm install"]
+
+[phases.build]
+cmds = ["npm run build"]
+
+[start]
+cmd = "npm start"
