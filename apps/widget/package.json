@@ -7,11 +7,13 @@
     "dev": "vite --port 4002 --strictPort",
     "build": "vite build",
     "preview": "vite preview",
+    "start": "serve -s dist",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "serve": "^14.2.4"
   },
   "devDependencies": {
     "@types/react": "^18.3.0",
