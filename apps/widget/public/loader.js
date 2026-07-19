@@ -99,6 +99,18 @@
   })
   css(panel, side)
 
+  // Close affordance on the panel itself, so there's always a way to dismiss it —
+  // even when the host hides the launcher bubble (data-launcher="none") and only
+  // calls NAI.open(). Overlays the top-right of the iframe.
+  var closeBtn = document.createElement('button')
+  closeBtn.setAttribute('aria-label', 'Close support')
+  closeBtn.innerHTML = '&times;'
+  css(closeBtn, {
+    position: 'absolute', top: '10px', right: '12px', zIndex: 2147483002,
+    width: '28px', height: '28px', borderRadius: '50%', border: 'none', cursor: 'pointer',
+    background: 'rgba(0,0,0,.4)', color: '#fff', font: '18px/28px system-ui, sans-serif', padding: '0'
+  })
+
   function mount() {
     if (mounted) return
     mounted = true
@@ -177,6 +189,11 @@
   NAI.open = openWidget
   NAI.close = closeWidget
   NAI.toggle = toggle
+
+  closeBtn.addEventListener('click', closeWidget)
+  panel.appendChild(closeBtn)
+  // Esc closes it too.
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && open) closeWidget() })
 
   function attach() {
     document.body.appendChild(panel)
