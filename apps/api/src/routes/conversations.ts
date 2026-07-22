@@ -261,10 +261,18 @@ export async function conversationsRoutes(fastify: FastifyInstance) {
     const diagnostics = mergeDiagnostics(storedDiag, parsed.data.diagnostics)
 
     // Retrieve INTERNAL docs for engineers — server-side, so the model never sees them.
-    const spaceRows = await db.select().from(clientSpaces).where(eq(clientSpaces.client_id, identity.clientId))
-    const internalSpaceIds = spaceRows.filter(s => s.role === 'internal').map(s => s.briefly_space_id)
-    const internalHits = await searchSpaces(briefly, internalSpaceIds, `${parsed.data.title} ${parsed.data.description}`)
-    const internalContext = internalHits.length ? internalHits.join('\n') : undefined
+    // Best-effort: this hits the Briefly API (embeddings / keyword search), and it must
+    // never block filing the ticket. Previously an error here threw the whole confirm
+    // before ticket creation — the ticket silently never got raised.
+    let internalContext: string | undefined
+    try {
+      const spaceRows = await db.select().from(clientSpaces).where(eq(clientSpaces.client_id, identity.clientId))
+      const internalSpaceIds = spaceRows.filter(s => s.role === 'internal').map(s => s.briefly_space_id)
+      const internalHits = await searchSpaces(briefly, internalSpaceIds, `${parsed.data.title} ${parsed.data.description}`)
+      internalContext = internalHits.length ? internalHits.join('\n') : undefined
+    } catch (err) {
+      request.log.warn({ err }, 'internal doc retrieval failed — filing ticket without it')
+    }
 
     // Full conversation transcript, saved with the ticket.
     const convMsgs = await db.select().from(messages)

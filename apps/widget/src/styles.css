@@ -196,6 +196,8 @@ body {
 .repro-nudge { font-size: 12.5px; line-height: 1.45; color: var(--text-2); background: color-mix(in srgb, var(--accent) 7%, var(--bg)); border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border)); border-radius: 9px; padding: 9px 11px; margin-bottom: 12px; }
 .repro-nudge strong { color: var(--text); }
 .ticket-confirmed { font-size: 13px; color: #16a34a; display: flex; align-items: center; gap: 6px; }
+.ticket-error { margin-top: 8px; font-size: 13px; color: #ef4444; }
+.btn:disabled { opacity: 0.6; cursor: default; }
 
 /* Customer-facing root cause shown on a resolved ticket. */
 .resolution-card { margin: 10px 12px 0; padding: 10px 12px; border-radius: 10px; font-size: 13px; line-height: 1.45; color: var(--text); background: color-mix(in srgb, #16a34a 8%, var(--panel)); border: 1px solid color-mix(in srgb, #16a34a 30%, var(--border)); }

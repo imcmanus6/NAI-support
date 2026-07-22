@@ -30,6 +30,8 @@ interface ChatItem {
   ticket?: ProposedTicket | null
   ticketState?: 'pending' | 'confirmed' | 'resolved'
   deflection?: Deflection   // self-serve fix proposed before filing
+  filing?: boolean          // a confirm/raise request is in flight
+  error?: string            // the last raise attempt failed — shown so it isn't silent
 }
 
 const GREETING: ChatItem = {
@@ -141,13 +143,25 @@ export function App() {
 
   async function onConfirmTicket(itemId: string, ticket: ProposedTicket, force = false) {
     if (!conversationId) return
-    const res = await confirmTicket(conversationId, ticket, attachments[itemId], recordings[itemId], force, fileObjects.current[itemId])
-    if (res.deflected && res.diagnosis) {
-      // Auto-diagnosis thinks the customer can fix this — show the steps, hold the ticket.
-      setItems(prev => prev.map(it => it.id === itemId ? { ...it, deflection: res.diagnosis } : it))
-      return
+    // Mark in-flight and clear any prior error so the button can show progress and
+    // a failure can never leave the card silently stuck.
+    setItems(prev => prev.map(it => it.id === itemId ? { ...it, filing: true, error: undefined } : it))
+    try {
+      const res = await confirmTicket(conversationId, ticket, attachments[itemId], recordings[itemId], force, fileObjects.current[itemId])
+      if (res.deflected && res.diagnosis) {
+        // Auto-diagnosis thinks the customer can fix this — show the steps, hold the ticket.
+        setItems(prev => prev.map(it => it.id === itemId ? { ...it, deflection: res.diagnosis, filing: false } : it))
+        return
+      }
+      setItems(prev => prev.map(it => it.id === itemId ? { ...it, ticketState: 'confirmed', filing: false } : it))
+    } catch (e) {
+      // Previously this rejection was swallowed (void call) — the ticket silently
+      // failed to file and the card just sat there. Surface it and allow a retry.
+      console.error('[support] confirm ticket failed:', e)
+      setItems(prev => prev.map(it => it.id === itemId
+        ? { ...it, filing: false, error: 'Sorry — I couldn’t raise the ticket just now. Please try again.' }
+        : it))
     }
-    setItems(prev => prev.map(it => it.id === itemId ? { ...it, ticketState: 'confirmed' } : it))
   }
 
   async function onResolved(itemId: string) {
@@ -283,9 +297,12 @@ export function App() {
                         {item.deflection.steps.map((s, i) => <li key={i}>{s}</li>)}
                       </ol>
                       <div className="ticket-actions">
-                        <button className="btn primary" onClick={() => void onResolved(item.id)}>✓ That fixed it</button>
-                        <button className="btn" onClick={() => void onConfirmTicket(item.id, item.ticket!, true)}>Still need help</button>
+                        <button className="btn primary" onClick={() => void onResolved(item.id)} disabled={item.filing}>✓ That fixed it</button>
+                        <button className="btn" onClick={() => void onConfirmTicket(item.id, item.ticket!, true)} disabled={item.filing}>
+                          {item.filing ? 'Raising…' : 'Still need help'}
+                        </button>
                       </div>
+                      {item.error && <div className="ticket-error">{item.error}</div>}
                     </div>
                   ) : (
                     <div className="ticket-card">
@@ -317,9 +334,12 @@ export function App() {
                         <button className={`btn${!embedded && !attachments[item.id] ? ' accent' : ''}`} onClick={() => pickAttachment(item.id)}>
                           {attachments[item.id] ? 'Change screenshot' : '📷 Add a screenshot'}
                         </button>
-                        <button className="btn primary" onClick={() => void onConfirmTicket(item.id, item.ticket!)}>Raise ticket</button>
-                        <button className="btn" onClick={() => onDismissTicket(item.id)}>Not now</button>
+                        <button className="btn primary" onClick={() => void onConfirmTicket(item.id, item.ticket!)} disabled={item.filing}>
+                          {item.filing ? 'Raising…' : 'Raise ticket'}
+                        </button>
+                        <button className="btn" onClick={() => onDismissTicket(item.id)} disabled={item.filing}>Not now</button>
                       </div>
+                      {item.error && <div className="ticket-error">{item.error}</div>}
                     </div>
                   )}
                 </div>
